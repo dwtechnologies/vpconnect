@@ -5,7 +5,7 @@ import (
 	"os"
 )
 
-type config struct {
+type file struct {
 	FriendlyName string `yaml:"FriendlyName"`
 	Name         string `yaml:"Name"`
 	Environment  string `yaml:"Environment"`
@@ -13,20 +13,25 @@ type config struct {
 
 	Network network `yaml:"Network"`
 	Ecs     ecs     `yaml:"Ecs"`
-	Vpn     vpn     `yaml:"Vpn"`
+
+	Config config `yaml:"Config"`
 
 	Debug bool `yaml:"Debug"`
 
-	Rules   []rule    `yaml:"Rules"`
 	Ingress []ingress `yaml:"Ingress"`
 
 	// Below are only used internally for templating.
 	AutoIngressString   string `yaml:"-"`
 	ManualIngressString string `yaml:"-"`
-	RulesString         string `yaml:"-"`
-	LocalSubnetsString  string `yaml:"-"`
-	RemoteSubnetsString string `yaml:"-"`
-	RemoteIpsString     string `yaml:"-"`
+	ConfigString        string `yaml:"-"`
+}
+
+// vpconnect contains the data that will be base64 encoded
+// and set as an env variable in the docker image.
+type config struct {
+	Connections   []connection `yaml:"Connections"`
+	Rules         []rule       `yaml:"Rules"`
+	CheckInterval int          `yaml:"CheckInterval"`
 }
 
 type network struct {
@@ -45,21 +50,31 @@ type ecs struct {
 	AmiImageId   string `yaml:"AmiImageId"` /* china */
 }
 
-type vpn struct {
-	Type           string   `yaml:"Type"`
-	IkeVersion     int      `yaml:"IkeVersion"`
-	PskEncrypted   string   `yaml:"PskEncrypted"` /* global */
-	Psk            string   `yaml:"Psk"`          /* china */
-	CheckInterval  int      `yaml:"CheckInterval"`
-	LocalSubnets   []string `yaml:"LocalSubnets"`
-	RemoteSubnets  []string `yaml:"RemoteSubnets"`
-	RemoteIps      []string `yaml:"RemoteIps"`
-	Encryption     string   `yaml:"Encryption"`
-	Integrity      string   `yaml:"Integrity"`
-	DiffieHellman  string   `yaml:"DiffieHellman"`
-	IkeLifeTime    int      `yaml:"IkeLifeTime"`
-	IpsecLifeTime  int      `yaml:"IpsecLifeTime"`
-	CharonLogLevel int      `yaml:"CharonLogLevel"`
+type connection struct {
+	Name          string `yaml:"Name"`
+	Type          string `yaml:"Type"`
+	IkeVersion    int    `yaml:"IkeVersion"`
+	PskEncrypted  string `yaml:"PskEncrypted"`
+	Psk           string `yaml:"Psk"`
+	Encryption    string `yaml:"Encryption"`
+	Integrity     string `yaml:"Integrity"`
+	DiffieHellman string `yaml:"DiffieHellman"`
+	IkeLifeTime   int    `yaml:"IkeLifeTime"`
+	IpsecLifeTime int    `yaml:"IpsecLifeTime"`
+
+	Local   local    `yaml:"Local"`
+	Remotes []remote `yaml:"Remotes"`
+}
+
+type local struct {
+	Subnets []string `yaml:"Subnets"`
+}
+
+type remote struct {
+	Name    string   `yaml:"Name"`
+	Ip      string   `yaml:"Ip"`
+	Id      string   `yaml:"Id"`
+	Subnets []string `yaml:"Subnets"`
 }
 
 type rule struct {

@@ -16,7 +16,7 @@ var debug = false
 // setDebugLevel will check the DEBUG env var and if set try and convert it to
 // an bool. If it fails to convert we will exit(1).
 func setDebugLevel() {
-	val := strings.ToLower(strings.TrimSpace(os.Getenv("DEBUG")))
+	val := strings.ToLower(removeSpaces(os.Getenv("DEBUG")))
 	if val == "" {
 		val = "false"
 	}

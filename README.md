@@ -28,8 +28,11 @@ Please refer to the Example at the bottom of this page for an step by step examp
 - Docker based so you can easily try out new versions and easily roll-back to previous version.
 - Good security, "bad" algos are not included in the minimal strongswan build (see below).
 - Encrypts PSK password in global region using KMS. So PSK not stored anywhere in clear text (will be stored in clear text in china).
+- Supports multiple tunnels.
 
 ## Note on instance types (m)
+
+*not tested*
 
 Some instance types as the m class can have network interface names other than ethX.  
 For now these will not work since the system relies on that the naming is eth0 for the primary and eth1 for the secondary.  
@@ -184,134 +187,83 @@ When a new service has been generated the following configuration file will have
 services/<NAME>-<ENV>/config.yaml       The main configuration file. Please edit this and not any CF template directly.
 ```
 
-The file will look similar to this
+The file will look like this:
 
 ```yaml
 FriendlyName: ""
-Name: myservice
-Environment: prod
+Name: testService
+Environment: dev
 Region: global
 Network:
   VpcId: ""
   PrivateSubnetId: ""
   PublicSubnetId: ""
 Ecs:
-  InstanceType: t3.nano
+  InstanceType: t2.nano
   Memory: 384
   DockerImage: ""
   SshKeyName: ""
   KmsKeyArn: ""
   AlarmSnsArn: ""
   AmiImageId: ""
-Vpn:
-  Type: subnet
-  IkeVersion: 2
-  PskEncrypted: ""
-  Psk: ""
+Config:
+  Connections:
+  - Name: ""
+    Type: subnet
+    IkeVersion: 2
+    PskEncrypted: ""
+    Psk: ""
+    Encryption: aes256
+    Integrity: sha256
+    DiffieHellman: modp2048
+    IkeLifeTime: 10800
+    IpsecLifeTime: 3600
+    Local:
+      Subnets: []
+    Remotes: []
+  Rules: []
   CheckInterval: 300
-  LocalSubnets: []
-  RemoteSubnets: []
-  RemoteIps: []
-  Encryption: aes256
-  Integrity: sha256
-  DiffieHellman: modp2048
-  IkeLifeTime: 10800
-  IpsecLifeTime: 3600
-  CharonLogLevel: 1
 Debug: false
-Rules: []
 Ingress: []
 ```
 
 ### Config Parameters
 
-```text
-| Var name                | Description                                                      | Default value | Required |
-|=========================|==================================================================|===============|==========|
-| FriendlyName            | Friendly name used in descriptions etc.                          |               | Yes      |
-|                         | Can be spaces, upper case letters and so on.                     |               |          |
-|-------------------------|------------------------------------------------------------------|---------------|----------|
-| Name                    | The name for the service, used in naming resources.              |               | Yes      |
-|                         | Must be lower case alphanumeric characters.                      |               |          |
-|-------------------------|------------------------------------------------------------------|---------------|----------|
-| Environment             | The environment it's deployed to. prod, staging, test, dev etc.  |               | Yes      |
-|-------------------------|------------------------------------------------------------------|---------------|----------|
-| Region                  | Either global or china.                                          |               | Yes      |
-|-------------------------|------------------------------------------------------------------|---------------|----------|
-| Network.VpcId           | The VPC ID the service should be deployed to.                    |               | Yes      |
-|-------------------------|------------------------------------------------------------------|---------------|----------|
-| Network.PrivateSubnetId | The Subnet ID for the private network interface                  |               | Yes      |
-|                         | (used monitoring/internally). Only 1 subnet is supported.        |               |          |
-|-------------------------|------------------------------------------------------------------|---------------|----------|
-| Network.PublicSubnetId  | The Subnet ID for the public network interface.                  |               | Yes      |
-|                         | Must be a public subnet and be in the same AZ as the             |               |          |
-|                         | Private subnet. Only 1 subnet is supported.                      |               |          |
-|-------------------------|------------------------------------------------------------------|---------------|----------|
-| Ecs.InstanceType        | The Instance Type to use for the ECS cluster.                    | t3/t2.nano    | No       |
-|                         | t3.nano default for global, t2.nano for china.                   |               |          |
-|-------------------------|------------------------------------------------------------------|---------------|----------|
-| Ecs.Memory              | The amount of memory to reserve for the service.                 | 384           | No       |
-|                         | Should correspond to something valid depending on Instance Type. |               |          |
-|-------------------------|------------------------------------------------------------------|---------------|----------|
-| Ecs.DockerImage         | What repo and docker image to use for the service.               |               | Yes      |
-|-------------------------|------------------------------------------------------------------|---------------|----------|
-| Ecs.SshKeyName          | What root key to launch the instance with.                       |               | Yes      |
-|-------------------------|------------------------------------------------------------------|---------------|----------|
-| Ecs.KmsKeyArn           | KMS Key ARN used to decrypt the PSK SSM Parameter.               |               | Yes for  |
-|                         | This Key must have been added with a Key policy for the whole    |               | global   |
-|                         | AWS account. Otherwise the policy for allowing decrypt added     |               |          |
-|                         | by this services CF will not be enough to use it. Please see     |               |          |
-|                         | https://amzn.to/2Ox81e0                                          |               |          |
-|-------------------------|------------------------------------------------------------------|---------------|----------|
-| Ecs.AlarmSnsArn         | What SNS topic ARN to send any alarms to.                        |               | Yes      |
-|-------------------------|------------------------------------------------------------------|---------------|----------|
-| Ecs.AmiImageId          | What AMI Image ID to use for instances.                          |               | Yes for  |
-|                         | This setting will be ignored if region is global.                |               | china    |
-|-------------------------|------------------------------------------------------------------|---------------|----------|
-| Vpn.Type                | What kind of VPN service to setup.                               | subnet        | No       |
-|-------------------------|------------------------------------------------------------------|---------------|----------|
-| Vpn.IkeVersion          | The IKE version Charon should run as (Either 1 or 2)             | 2             | Yes      |
-|-------------------------|------------------------------------------------------------------|---------------|----------|
-| Vpn.PskEncrypted        | The encrypted PSK value. Should be encrypted by the key          |               | Yes for  |
-|                         | specified in Ecs.KmsKeyArn. Otherwise decryption might fail      |               | global   |
-|-------------------------|------------------------------------------------------------------|---------------|----------|
-| Vpn.Psk                 | The unencrypted PSK value. Should only be used in china region.  |               | Yes for  |
-|                         | This setting will be ignored if region is global.                |               | china    |
-|-------------------------|------------------------------------------------------------------|---------------|----------|
-| Vpn.CheckInterval       | The number of seconds between checking DNS addresses in rules.   | 300           | No       |
-|                         | Should try and match DNS TTL of the entries.                     |               |          |
-|-------------------------|------------------------------------------------------------------|---------------|----------|
-| Vpn.LocalSubnets        | List of subnets on the left/local side.                          |               | Yes      |
-|                         | Write subnets with CIDR notation. (example 192.168.0.0/24)       |               |          |
-|-------------------------|------------------------------------------------------------------|---------------|----------|
-| Vpn.RemoteSubnets       | List of subnets on the right/remote side.                        |               | Yes      |
-|                         | Write subnets with CIDR notation. (example 192.168.0.0/24)       |               |          |
-|-------------------------|------------------------------------------------------------------|---------------|----------|
-| Vpn.RemoteIps           | Remote IPs for the right side. At least 1 must be specified      |               | Yes      |
-|-------------------------|------------------------------------------------------------------|---------------|----------|
-| Vpn.Encryption          | The Encryption algorithm to use.                                 | aes256        | No       |
-|-------------------------|------------------------------------------------------------------|---------------|----------|
-| Vpn.Integrity           | The Integrity algorithm to use.                                  | sha256        | No       |
-|-------------------------|------------------------------------------------------------------|---------------|----------|
-| Vpn.DiffieHellman       | The Diffie Hellman group to use.                                 | modp2048      | No       |
-|-------------------------|------------------------------------------------------------------|---------------|----------|
-| Vpn.IkeLifeTime         | The IKE/Phase 1 lifetime in seconds.                             | 10800         | No       |
-|-------------------------|------------------------------------------------------------------|---------------|----------|
-| Vpn.IpsecLifeTime       | The IPSec/Phase 2 lifetime in seconds.                           | 3600          | No       |
-|-------------------------|------------------------------------------------------------------|---------------|----------|
-| Vpn.CharonLogLevel      | The loglevel to use for charon.log. (Valid values 1-4).          | 1             | No       |
-|-------------------------|------------------------------------------------------------------|---------------|----------|
-| Debug                   | If the vpconnect program should start in debug mode- very noisy! | false         | No       |
-|-------------------------|------------------------------------------------------------------|---------------|----------|
-| Rules                   | List of rules (see rules below!)                                 |               | Yes      |
-|-------------------------|------------------------------------------------------------------|---------------|----------|
-| Ingress                 | Manual SG Ingress rule on the Public Interface.                  |               | No       |
-|                         | Only the WAN IP (primary and secondary) are opened on            |               |          |
-|                         | UDP/500 + 4500 automatically. Any local subnets/SGs that need    |               |          |
-|                         | to be able to use the VPN service needs to be added as well.     |               |          |
-|                         | (see ingress below)                                              |               |          |
-|-------------------------|------------------------------------------------------------------|---------------|----------|
-```
+| Name | Description | Default | Required |
+| - | - | - | - |
+| FriendlyName | Friendly name used in descriptions etc. Can be spaces, upper case letters and so on. | | Yes |
+| Name | The name for the service, used in naming resources. Must be lower case alphanumeric characters. | | Yes |
+| Debug | If the vpconnect program should start in debug mode. Very noisy! | false | No |
+| Environment | The environment it's deployed to. prod, staging, test, dev etc. | | Yes |
+| Region  | Either global or china. | | Yes |
+| Network.VpcId | The VPC ID the service should be deployed to. | | Yes |
+| Network.PrivateSubnetId | The Subnet ID for the private network interface (used monitoring/internally). Only 1 subnet is supported. | | Yes |
+| Network.PublicSubnetId  | The Subnet ID for the public network interface. Must be a public subnet and be in the same AZ as the Private subnet. Only 1 subnet is supported. | | Yes |
+| Ecs.InstanceType | The Instance Type to use for the ECS cluster. t3.nano default for global, t2.nano for china. | t3/t2.nano | No |
+| Ecs.Memory | The amount of memory to reserve for the service. Should correspond to something valid depending on Instance Type. | 384 | No |
+| Ecs.DockerImage | What repo and docker image to use for the service. | | Yes |
+| Ecs.SshKeyName | What root key to launch the instance with. | | Yes |
+| Ecs.KmsKeyArn | KMS Key ARN used to decrypt the PSK SSM Parameter. This Key must have been added with a Key policy for the whole AWS account. Otherwise the policy for allowing decrypt added by this services CF will not be enough to use it. Please see [https://amzn.to/2Ox81e0](https://amzn.to/2Ox81e0) | | Yes for global |
+| Ecs.AlarmSnsArn | What SNS topic ARN to send any alarms to. | | Yes |
+| Ecs.AmiImageId  | What AMI Image ID to use for instances. This setting will be ignored if region is global. | | Yes for china |
+| Config.CheckInterval | The number of seconds between checking DNS addresses in rules. Should try and match DNS TTL of the entries. | 300 | No |
+| Config.Connections.Name | The name of the connection. | | Yes |
+| Config.Connections.Type | What kind of VPN service to setup. | subnet | No |
+| Config.Connections.IkeVersion | The IKE version Charon should run as (Either 1 or 2)  | 2 | No |
+| Config.Connections.PskEncrypted | The encrypted PSK value. Should be encrypted by the key specified in Ecs.KmsKeyArn. Otherwise decryption might fail. |  | Yes for global |
+| Config.Connections.Psk | The unencrypted PSK value. Should only be used in china region. This setting will be ignored if region is global. | | Yes for china |
+| Config.Connections.Local.Subnets | List of subnets on the left/local side. Write subnets with CIDR notation. (example 192.168.0.0/24). | | Yes |
+| Config.Connections.Remotes.Name | Remote Name. | | Yes |
+| Config.Connections.Remotes.Ip | Remote IP for the right side. | | Yes |
+| Config.Connections.Remotes.Id | Remote ID for the right side. | Same as Ip | No |
+| Config.Connections.Remotes.Subnets | List of subnets on the right/remote side. Write subnets with CIDR notation. (example 192.168.0.0/24) | | Yes |
+| Config.Connections.Encryption | The Encryption algorithm to use. | aes256 | No |
+| Config.Connections.Integrity | The Integrity algorithm to use. | sha256 | No |
+| Config.Connections.DiffieHellman | The Diffie Hellman group to use. | modp2048 | No |
+| Config.Connections.IkeLifeTime | The IKE/Phase 1 lifetime in seconds. | 10800 | No |
+| Config.Connections.IpsecLifeTime | The IPSec/Phase 2 lifetime in seconds. | 3600 | No |
+| Config.Rules | List of rules | | Yes |
+| Ingress | Manual SG Ingress rule on the Public Interface. Only the WAN IP (primary and secondary) are opened on UDP/500 + 4500 automatically. Any local subnets/SGs that need to be able to use the VPN service needs to be added as well. | | No |
 
 Fill in the empty values according to your specification before attempting to run later steps.
 
@@ -436,6 +388,18 @@ You simple just add a route for the specific CIDR to the eni created. This eni w
 ## Example (step-by-step)
 
 The following steps will explain how to generate a new VPConnect service.
+We will pretend to be connecting our datacenter to our warehouse.
+
+It will create two VPN tunnels, one primary and one secondary.
+The primary WAN ip will be 213.111.111.100 and the secondary will be
+213.222.222.100.
+
+The local (left) subnets are `10.10.10.0/24` and `10.20.20.0/24` and the remote (right) subnets are `192.168.100.0/24` and `192.168.200.0/24`.
+
+In iptables (RULES) we will limit so that the warehouse can access the IP corresponding to my.aws.service.com over tcp/443.  
+All other ports (and traffic in other direction) will be denied.
+
+If my.aws.service.com changes IP the service will automatically update the iptables rule.
 
 ### Create the base template
 
@@ -451,79 +415,88 @@ Check the parameters above for what must be set and not.
 See the following example config.
 
 ```yaml
-FriendlyName: "TEST"
-Name: "test"
-Environment: "dev"
-Region: "global"
-Network:
-  VpcId: "vpc-12345678"
-  PrivateSubnetId: "vpc-87654321"
-  PublicSubnetId: "vpc-12345678"
+# Allow traffic from our warehouse, 192.168.100.0/24 and 192.168.200.0/24
+# to the IP that corresponds to my.aws.service.com (is in 10.10.10.0/24
+# or 10.20.20.0/24 in this example). Only traffic on port tcp/443 will
+# be allowed.
+# Masquerading will not be enabled.
+# All other incoming or outgoing traffic will be blocked.
 
+# As you will see in the ingress rules (the AWS SG rules) we allow all
+# traffic over all protocols from 192.168.100+200.0/24 and then limit
+# by iptables.
+
+# In a real world scenario you would probably want this as tight as
+# possible regarding sources, protocols and ports.
+
+# For example limiting tcp/443 to the whole subnet that an load balancer
+# with none static IP is in. And then add the DNS hostname of the load
+# balancer to the Rules list so that we can block all traffic except
+# to to the load balancer.
+
+FriendlyName: Test
+Name: test
+Environment: dev
+Region: global
+Network:
+  VpcId: vpc-12345678
+  PrivateSubnetId: subnet-87654321
+  PublicSubnetId: subnet-12345678
 
 Ecs:
-  InstanceType: "t3.nano"
+  InstanceType: t2.nano
   Memory: 384
-  DockerImage: "my.ecr.repo.com/vpconnect:my-image-tag"
-  SshKeyName: "my-private-key"
-  KmsKeyArn: "arn:aws:kms:MyRegion:MyAccountId:key/My-Key-Id" (leave empty if in china)
-  AlarmSnsArn: "arn:aws:sns:MyRegion:MyAccountId:MySNS"
-  AmiImageId: "AmiImageID" (leave empty if in global)
+  DockerImage: my.ecr.repo.com/vpconnect:my-image-tag
+  SshKeyName: my-key
+  KmsKeyArn: arn:aws:kms:MyRegion:MyAccountId:key/My-KmsKey-Id
+  AlarmSnsArn: arn:aws:sns:MyRegion:MyAccountId:MySNS
 
-Vpn:
-  Type: "subnet"
-  IkeVersion: 2
-  PskEncrypted: "EncryptedString" (leave empty if in china)
-  Psk: "Psk Unencrypted" (leave empty if in global)
+Config:
+  Connections:
+    - Name: warehouse
+      Type: subnet
+      IkeVersion: 2
+      PskEncrypted: MYENCRYPTIONHASH
+      Encryption: aes256
+      Integrity: sha256
+      DiffieHellman: modp2048
+      IkeLifeTime: 10800
+      IpsecLifeTime: 3600
+
+      Local:
+        Subnets: [ 10.10.10.0/24, 10.20.20.0/24 ]
+
+      Remotes:
+        - Name: primary
+          Ip: 213.111.111.100
+          Subnets: [ 192.168.100.0/24, 192.168.200.0/24 ]
+
+        - Name: secondary
+          Ip: 213.222.222.100
+          Subnets: [ 192.168.100.0/24, 192.168.200.0/24 ]
+
+  Rules:
+    - From: [ 192.168.100.0/24, 192.168.200.0/24 ]
+      To: [ my.aws.service.com ]
+      Ports: [ 443 ]
+      Protocols: [ tcp ]
+      Masq: false
+
   CheckInterval: 300
-  LocalSubnets:
-    - "10.0.0.0/24"
-  RemoteSubnets:
-    - "192.168.0.0/24"
-    - "192.168.1.0/24"
-  RemoteIps:
-    - "123.123.123.123"
-  Encryption: "aes256"
-  Integrity: "sha256"
-  DiffieHellman: "modp2048"
-  IkeLifeTime: 10800
-  IpsecLifeTime: 3600
-  CharonLogLevel: 1
 
 Debug: false
 
-# Allow traffic from our side, 10.0.0.0/24 to 192.168.0.0/24 and
-# 192.168.1.0/24. But for 192.168.0.0/24 only allow TCP 443 and 444
-# but allow all protocols and ports to 192.168.1.0/24 but hide it
-# behind NAT.
-# But only for port tcp 443 and 444. This will go to the security
-# group rules. So in the security group we allow all protocols and ports
-# from 10.0.0.0/24.
-# And in the rules section below we limit the allowed traffic further.
-# These rules will make it possible for 10.0.0.0/24 to contact any
-# host on 192.168.0.0/24 network on port tcp/443 and 443.
-# And allows all traffic from 10.0.0.0/24 to 192.168.1.0/24 on any port.
-# However all traffic from 192.168.0.0/24 or 192.168.1.0/24 to our
-# network 10.0.0.0/24 will be blocked my iptable rules.
 Ingress:
-  - CidrIp: "10.0.0.0/24"
-    Description: Allow test on 443 and 444
+  - CidrIp: 192.168.100.0/24
+    Description: Allow warehouse series 1
     FromPort: -1
     ToPort: -1
     IpProtocol: -1
-
-Rules:
-  - From: [ "10.0.0.0/24" ]
-    To: [ "192.168.0.0/24" ]
-    Ports: [ 443, 444 ]
-    Protocols: [ "tcp" ]
-    Masq: false
-
-  - From: [ "10.0.0.0/24" ]
-    To: [ "192.168.1.0/24" ]
-    Ports: [ -1 ]
-    Protocols: [ "-1" ]
-    Masq: true
+  - CidrIp: 192.168.200.0/24
+    Description: Allow warehouse series 1
+    FromPort: -1
+    ToPort: -1
+    IpProtocol: -1
 ```
 
 ### Deploy it

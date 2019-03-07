@@ -49,36 +49,35 @@ func new(name string, env string, region string) error {
 	return nil
 }
 
-func newConfig(name string, env string, region string) *config {
-	instanceType := def["InstanceTypeGlobal"].(string)
-	if strings.ToLower(region) == "china" {
-		instanceType = def["InstanceTypeChina"].(string)
-	}
-
-	return &config{
+func newConfig(name string, env string, region string) *file {
+	return &file{
 		Name:        name,
 		Environment: env,
 		Region:      region,
 		Network:     network{},
 		Ecs: ecs{
-			InstanceType: instanceType,
+			InstanceType: def["InstanceType"].(string),
 			Memory:       def["Memory"].(int),
 		},
-		Vpn: vpn{
-			Type:           def["Type"].(string),
-			IkeVersion:     def["IkeVersion"].(int),
-			CheckInterval:  def["CheckInterval"].(int),
-			Encryption:     def["Encryption"].(string),
-			Integrity:      def["Integrity"].(string),
-			DiffieHellman:  def["DiffieHellman"].(string),
-			IkeLifeTime:    def["IkeLifeTime"].(int),
-			IpsecLifeTime:  def["IpsecLifeTime"].(int),
-			CharonLogLevel: def["CharonLogLevel"].(int),
+
+		Config: config{
+			Connections: []connection{
+				connection{
+					Type:          def["Type"].(string),
+					IkeVersion:    def["IkeVersion"].(int),
+					Encryption:    def["Encryption"].(string),
+					Integrity:     def["Integrity"].(string),
+					DiffieHellman: def["DiffieHellman"].(string),
+					IkeLifeTime:   def["IkeLifeTime"].(int),
+					IpsecLifeTime: def["IpsecLifeTime"].(int),
+				},
+			},
+			Rules:         []rule{},
+			CheckInterval: def["CheckInterval"].(int),
 		},
 
 		Debug: def["Debug"].(bool),
 
-		Rules:   []rule{},
 		Ingress: []ingress{},
 	}
 }

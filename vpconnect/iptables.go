@@ -41,9 +41,11 @@ func (v *vpconnect) initIptables() error {
 
 	// Create list and add primary and secondary IP to the list.
 	list := iptablesInitArgs
-	for _, ip := range v.right.remoteIPs {
-		list = append(list, []string{"-A", "INPUT", "-s", fmt.Sprintf("%s/32", ip), "-p", "udp", "--dport", "500", "-i", "eth1", "-j", "ACCEPT"})
-		list = append(list, []string{"-A", "INPUT", "-s", fmt.Sprintf("%s/32", ip), "-p", "udp", "--dport", "4500", "-i", "eth1", "-j", "ACCEPT"})
+	for _, conn := range v.Connections {
+		for _, remote := range conn.Remotes {
+			list = append(list, []string{"-A", "INPUT", "-s", fmt.Sprintf("%s/32", remote.Ip), "-p", "udp", "--dport", "500", "-i", "eth1", "-j", "ACCEPT"})
+			list = append(list, []string{"-A", "INPUT", "-s", fmt.Sprintf("%s/32", remote.Ip), "-p", "udp", "--dport", "4500", "-i", "eth1", "-j", "ACCEPT"})
+		}
 	}
 
 	// Set initial policies.
@@ -61,7 +63,7 @@ func (v *vpconnect) initIptables() error {
 
 // addIptableRule will add an iptable rule with the variables contained in r.
 // Returns error.
-func (v *vpconnect) addIptableRule(r *rule) error {
+func (v *vpconnect) addIptableRule(r *parsedRule) error {
 	print(&msg{Message: "v.addIptableRule(): Entering", LogLevel: "debug"})
 	defer print(&msg{Message: "v.addIptableRule(): Returning", LogLevel: "debug"})
 	list := [][]string{}
@@ -98,7 +100,7 @@ func (v *vpconnect) addIptableRule(r *rule) error {
 
 // deleteIptableRule will delete an iptable rule with the variables contained in r.
 // Returns error.
-func (v *vpconnect) deleteIptableRule(r *rule) error {
+func (v *vpconnect) deleteIptableRule(r *parsedRule) error {
 	print(&msg{Message: "v.deleteIptableRule(): Entering", LogLevel: "debug"})
 	defer print(&msg{Message: "v.deleteIptableRule(): Returning", LogLevel: "debug"})
 	list := [][]string{}

@@ -182,7 +182,7 @@ func (v *vpconnect) compareDesiredAndActiveRules() ([]int, []int) {
 // comparRules compares r1 and r2 with each other and returns
 // true if r1 and r2 are the same. Otherwise returns false.
 // Returns bool.
-func (*vpconnect) compareRules(r1 *rule, r2 *rule) bool {
+func (*vpconnect) compareRules(r1 *parsedRule, r2 *parsedRule) bool {
 	print(&msg{Message: "v.compareRules(): Entering", LogLevel: "debug"})
 	defer print(&msg{Message: "v.compareRules(): Returning", LogLevel: "debug"})
 
@@ -210,8 +210,8 @@ func (v *vpconnect) generateRules() error {
 
 	// Make a channel for sending rules so we can append them
 	// to a the desired slice of rules.
-	c := make(chan *rule)
-	rules := []*rule{}
+	c := make(chan *parsedRule)
+	rules := []*parsedRule{}
 
 	// Append all rules to the rules slice.
 	go func() {
@@ -222,7 +222,7 @@ func (v *vpconnect) generateRules() error {
 
 	// Loop through all the imported rules.
 	wg := &sync.WaitGroup{}
-	for _, r := range v.importedRules {
+	for _, r := range v.Rules {
 		currentRule := r
 		wg.Add(1)
 		go v.generateRulesFrom(c, wg, currentRule)
@@ -249,19 +249,19 @@ func (v *vpconnect) generateRules() error {
 // will be added as well. If /MASK is missing we will add a /32 mask.
 // If there is a validation error or DNS resolution fails an empty rule
 // with an error message will be sent to c.
-func (v *vpconnect) generateRulesFrom(c chan *rule, w *sync.WaitGroup, r importedRule) {
+func (v *vpconnect) generateRulesFrom(c chan *parsedRule, w *sync.WaitGroup, r *rule) {
 	print(&msg{Message: "v.generateRulesFrom(): Entering", LogLevel: "debug"})
 	defer print(&msg{Message: "v.generateRulesFrom(): Returning", LogLevel: "debug"})
 
 	wg := &sync.WaitGroup{}
 	defer w.Done()
 
-	currentRule := &r
+	currentRule := r
 
 	for _, from := range r.From {
-		currentFromList, err := v.getCIDR(from)
+		currentFromList, err := getCIDR(from)
 		if err != nil {
-			c <- &rule{err: err}
+			c <- &parsedRule{err: err}
 			continue
 		}
 
@@ -281,7 +281,7 @@ func (v *vpconnect) generateRulesFrom(c chan *rule, w *sync.WaitGroup, r importe
 // will be added as well. If /MASK is missing we will add a /32 mask.
 // If there is a validation error or DNS resolution fails an empty rule
 // with an error message will be sent to c.
-func (v *vpconnect) generateRulesTo(c chan *rule, w *sync.WaitGroup, r *importedRule, from string) {
+func (v *vpconnect) generateRulesTo(c chan *parsedRule, w *sync.WaitGroup, r *rule, from string) {
 	print(&msg{Message: "v.generateRulesTo(): Entering", LogLevel: "debug"})
 	defer print(&msg{Message: "v.generateRulesTo(): Returning", LogLevel: "debug"})
 
@@ -292,9 +292,9 @@ func (v *vpconnect) generateRulesTo(c chan *rule, w *sync.WaitGroup, r *imported
 	currentFrom := from
 
 	for _, to := range r.To {
-		currentToList, err := v.getCIDR(to)
+		currentToList, err := getCIDR(to)
 		if err != nil {
-			c <- &rule{err: err}
+			c <- &parsedRule{err: err}
 			continue
 		}
 
@@ -312,7 +312,7 @@ func (v *vpconnect) generateRulesTo(c chan *rule, w *sync.WaitGroup, r *imported
 // generateRulesProtocol creates rules based on from and to and the protocols in the r.Protocols slice.
 // If there is a validation error an empty rule with an error message will be sent to c.
 // Allowed protocols are tcp, udp and icmp.
-func (v *vpconnect) generateRulesProtocol(c chan *rule, w *sync.WaitGroup, r *importedRule, from string, to string) {
+func (v *vpconnect) generateRulesProtocol(c chan *parsedRule, w *sync.WaitGroup, r *rule, from string, to string) {
 	print(&msg{Message: "v.generateRulesProtocol(): Entering", LogLevel: "debug"})
 	defer print(&msg{Message: "v.generateRulesProtocol(): Returning", LogLevel: "debug"})
 
@@ -332,8 +332,7 @@ func (v *vpconnect) generateRulesProtocol(c chan *rule, w *sync.WaitGroup, r *im
 
 		// Validate that protocol is either tcp, udp or icmp.
 		if currentProtocol != "tcp" && currentProtocol != "udp" && currentProtocol != "icmp" && currentProtocol != "all" {
-
-			c <- &rule{err: fmt.Errorf("v.generateRulesProtocol(): Unsupported protocol %s. Supported protocols are tcp, udp, icmp and (all or -1)", currentProtocol)}
+			c <- &parsedRule{err: fmt.Errorf("v.generateRulesProtocol(): Unsupported protocol %s. Supported protocols are tcp, udp, icmp and (all or -1)", currentProtocol)}
 			continue
 		}
 
@@ -348,7 +347,7 @@ func (v *vpconnect) generateRulesProtocol(c chan *rule, w *sync.WaitGroup, r *im
 // with an error message will be sent to c.
 // Rules for ICMP will be added with port number -1. All other rules
 // need to have a port number between 1-65535.
-func (v *vpconnect) generateRulesPort(c chan *rule, w *sync.WaitGroup, r *importedRule, from string, to string, protocol string) {
+func (v *vpconnect) generateRulesPort(c chan *parsedRule, w *sync.WaitGroup, r *rule, from string, to string, protocol string) {
 	print(&msg{Message: "v.generateRulesPort(): Entering", LogLevel: "debug"})
 	defer print(&msg{Message: "v.generateRulesPort(): Returning", LogLevel: "debug"})
 
@@ -374,11 +373,11 @@ func (v *vpconnect) generateRulesPort(c chan *rule, w *sync.WaitGroup, r *import
 			// Validate that port is between 1-65535.
 			switch {
 			case currentPort < 1 && currentPort != -1:
-				c <- &rule{err: fmt.Errorf("v.generateRulesPort(): Port was %d. Minimum allowed port value is 1 (or -1 for all ports)", currentPort)}
+				c <- &parsedRule{err: fmt.Errorf("v.generateRulesPort(): Port was %d. Minimum allowed port value is 1 (or -1 for all ports)", currentPort)}
 				continue
 
 			case currentPort > 65535:
-				c <- &rule{err: fmt.Errorf("v.generateRulesPort(): Port was %d. Maximum allowed port value is 65535", currentPort)}
+				c <- &parsedRule{err: fmt.Errorf("v.generateRulesPort(): Port was %d. Maximum allowed port value is 65535", currentPort)}
 				continue
 			}
 
@@ -391,13 +390,13 @@ func (v *vpconnect) generateRulesPort(c chan *rule, w *sync.WaitGroup, r *import
 
 // generateRulesFinalize will put together all the rule and send it to the rule channel
 // so it can be merged into a desired rule slice.
-func (v *vpconnect) generateRulesFinalize(c chan *rule, w *sync.WaitGroup, r *importedRule, from string, to string, protocol string, port int) {
+func (v *vpconnect) generateRulesFinalize(c chan *parsedRule, w *sync.WaitGroup, r *rule, from string, to string, protocol string, port int) {
 	print(&msg{Message: "v.generateRulesFinalize(): Entering", LogLevel: "debug"})
 	defer print(&msg{Message: "v.generateRulesFinalize(): Returning", LogLevel: "debug"})
 
 	defer w.Done()
 
-	c <- &rule{
+	c <- &parsedRule{
 		from:       from,
 		to:         to,
 		port:       port,
