@@ -1,42 +1,45 @@
 # VPConnect
 
 Small dockerized IPSec server with focus on supporting routing to dynamic resources, vpc peering and security.  
-Therefor lots of older DH groups, encryption algorithms etc are not supported.
 
 ## Overview
 
-VPConnect is based on `alpine:3.7` linux and `strongswan:5.7.1`.  
-The resulting image is less than 300mb in size.
+VPConnect is based on `alpine:3.7` linux and `strongswan:5.7.1`. The resulting image is less than 300mb in size.
 
-Strongswan and alpine version can in the future be updated by updating the Dockerfile accordingly.  
-For current version of strongswan please see [https://www.strongswan.org/download.html](https://www.strongswan.org/download.html).
-
-The system will run just fine on a `t3.nano` or `t2.nano` in most use cases.  
-So if you run it as a reserved instance for 3 years it will cost you around $1,5/month.
+The system will run just fine on a `t2.nano` in most use cases.  
+So if you run it as a reserved instance for 3 years it will cost you around $1,5/month (excluding data transfer costs).
 
 Please refer to the Example at the bottom of this page for an step by step example of how to create a new VPN service.
 
 ## Features
 
-- You can have a wide SA subnets and limit based on ingress SG as well as iptable rules.
-- Iptable rules can be based on DNS hostnames and will be automatically updated when changed.
-- Rules can be based on From, To, Ports and Protocol.
-- Masquerade specific rules, allowing traffic to traverse VPC Peering connections etc.
-- Static interface and elastic IP that survives ec2 teardown and creation, allowing robust VPN service without changing route table.
-- Extensive logging of both the service, charon log, new INPUT and FORWARD connections and ec2 security and health logs to CloudWatch logs.
-- Automatically launch a new ec2 if the previous one fails, and attaches the correct network interface and eip.
+- You can have a wide SA and limit accessed by iptables rules and/or SG ingress rules.
+- Iptables rules can be based on hostname and will be automatically updated when IP of the resource changes (good for load balancers!).
+- Masquerade specific subnets/ips/rules, allowing traffic to traverse VPC Peering connections to different regions/accounts.
+- Static interface and elastic IP that survives ec2 teardown and creation, allowing route entries that don't need to be changed when ec2 is rotated or updating/changing IP on service on the other end.
+- Extensive logging of both the vpconnect service with warning and errors, charon logging, new INPUT and FORWARD connections and ec2 security and health logs to CloudWatch logs.
+- ECS will automatically launch a new ec2 if the previous one fails, and attaches the correct network interface and eip.
 - Docker based so you can easily try out new versions and easily roll-back to previous version.
-- Good security, "bad" algos are not included in the minimal strongswan build (see below).
-- Encrypts PSK password in global region using KMS. So PSK not stored anywhere in clear text (will be stored in clear text in china).
-- Supports multiple tunnels.
+- Good security, "bad" security, integrity and dh aglos/groups are not included in the minimal strongswan build (see below).
+- Encrypts PSK password in global region using KMS. So PSK not stored anywhere in clear text **.
+  ** Will be stored in clear text if region=china, due to KMS missing not yet released in china.
+- Supports multiple right endpoints / connections.
 
-## Note on instance types (m)
+## Note on instance types
 
 *not tested*
 
-Some instance types as the m class can have network interface names other than ethX.  
-For now these will not work since the system relies on that the naming is eth0 for the primary and eth1 for the secondary.  
-You're most welcome to add a pull request for this if needed.
+Some instance types don't use the ethX naming schema for network interfaces and are probably not supported by the
+attach / detach interface commands. However this has not been tested. The following instance types have been tested
+and works.
+
+- t2
+- c4
+- c5
+
+Known instance types that doesn't work
+
+- m
 
 ## Diagram
 
