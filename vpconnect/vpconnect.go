@@ -36,8 +36,8 @@ type connection struct {
 	IkeLifeTime   int    `yaml:"IkeLifeTime"`
 	IpsecLifeTime int    `yaml:"IpsecLifeTime"`
 
-	Local   local    `yaml"Local"`
-	Remotes []remote `yaml"Remotes"`
+	Local   local    `yaml:"Local"`
+	Remotes []remote `yaml:"Remotes"`
 }
 
 type local struct {
