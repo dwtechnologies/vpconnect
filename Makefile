@@ -20,8 +20,8 @@ new:
 		-e GOPATH=/go \
 		-v $(PWD):/go/src/vpconnect \
 		-w /go/src/vpconnect/service-gen \
-		golang:1.10.1-alpine3.7 \
-		sh -c "apk --update add git && go get && go run ./*.go new $(SERVICE) $(ENVIRONMENT) $(REGION)"
+		golang:1.12-alpine3.8 \
+		sh -c "apk --update add git && go run ./*.go new $(SERVICE) $(ENVIRONMENT) $(REGION)"
 
 
 deploy: gen deploy-cf
@@ -35,8 +35,8 @@ gen:
 		-e GOPATH=/go \
 		-v $(PWD):/go/src/vpconnect \
 		-w /go/src/vpconnect/service-gen \
-		golang:1.10.1-alpine3.7 \
-		sh -c "apk --update add git && go get && go run ./*.go gen $(SERVICE) $(ENVIRONMENT)"
+		golang:1.12-alpine3.8 \
+		sh -c "apk --update add git && go run ./*.go gen $(SERVICE) $(ENVIRONMENT)"
 
 
 deploy-cf:
@@ -73,8 +73,8 @@ go-build:
 		-v $(PWD)/build:/build \
 		-v $(PWD):/go/src/vpconnect \
 		-w /go/src/vpconnect/vpconnect \
-		golang:1.10.1-alpine3.7 \
-		sh -c "apk --update add git && go get && go build -o /build/vpconnect"
+		golang:1.12-alpine3.8 \
+		sh -c "apk --update add git && go build -o /build/vpconnect"
 	@echo "\n\nbuild/vpconnect successfully built"
 
 
