@@ -31,9 +31,8 @@ gen:
 	@:$(call check_var, ENVIRONMENT)
 	@:$(call check_var, PWD)
 	@docker run \
-		-e GOPATH=/go \
-		-v $(PWD):/go/src/vpconnect \
-		-w /go/src/vpconnect/service-gen \
+		-v $(PWD):/src/vpconnect \
+		-w /src/vpconnect/service-gen \
 		golang:1.12-alpine3.9 \
 		sh -c "apk --update add git && go run ./*.go gen $(SERVICE) $(ENVIRONMENT)"
 
