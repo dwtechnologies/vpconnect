@@ -1,4 +1,4 @@
-FROM alpine:3.7
+FROM alpine:3.8
 
 RUN apk --update add curl curl-dev iptables iptables-dev \
 	ca-certificates iproute2 openssl openssl-dev build-base make
@@ -10,7 +10,7 @@ RUN apk --update add curl curl-dev iptables iptables-dev \
 RUN mkdir -p /tmp/src/strongswan
 WORKDIR /tmp/strongswan
 
-RUN curl -L -o strongswan.tar.gz https://download.strongswan.org/strongswan-5.7.1.tar.gz
+RUN curl -L -o strongswan.tar.gz https://download.strongswan.org/strongswan-5.7.2.tar.gz
 RUN tar -C ./ --strip-components=1 -xzf strongswan.tar.gz
 
 RUN ./configure --prefix=/usr --sysconfdir=/etc --libexecdir=/usr/lib \
