@@ -12,7 +12,7 @@ import (
 type vpconnect struct {
 	elasticIp string
 
-	Connections []*connection `yaml:"Connection"`
+	Connections []*connection `yaml:"Connections"`
 	Rules       []*rule       `yaml:"Rules"`
 
 	CheckInterval int `yaml:"CheckInterval"`
