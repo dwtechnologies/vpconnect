@@ -518,5 +518,5 @@ func (v *vpconnect) configCharonLogLevel() {
 		v.charonLogLevel = 1
 	}
 
-	print(&msg{Message: fmt.Sprintf("v.configCharonLogLevel(): Charon Log Level set to %s", v.charonLogLevel), LogLevel: "info"})
+	print(&msg{Message: fmt.Sprintf("v.configCharonLogLevel(): Charon Log Level set to %d", v.charonLogLevel), LogLevel: "info"})
 }
