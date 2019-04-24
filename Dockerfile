@@ -1,4 +1,4 @@
-FROM alpine:3.8
+FROM alpine:3.9
 
 RUN apk --update add curl curl-dev iptables iptables-dev \
 	ca-certificates iproute2 openssl openssl-dev build-base make
