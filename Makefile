@@ -16,7 +16,7 @@ new:
 	@docker run \
 		-v $(PWD):/src/vpconnect \
 		-w /src/vpconnect/service-gen \
-		golang:1.12-alpine3.9 \
+		golang:1.12-alpine3.10 \
 		sh -c "apk --update add git && go run ./*.go new $(SERVICE) $(ENVIRONMENT) $(REGION)"
 
 
@@ -30,7 +30,7 @@ gen:
 	@docker run \
 		-v $(PWD):/src/vpconnect \
 		-w /src/vpconnect/service-gen \
-		golang:1.12-alpine3.9 \
+		golang:1.12-alpine3.10 \
 		sh -c "apk --update add git && go run ./*.go gen $(SERVICE) $(ENVIRONMENT)"
 
 
@@ -67,8 +67,8 @@ go-build:
 		-v $(PWD)/build:/build \
 		-v $(PWD):/src/vpconnect \
 		-w /src/vpconnect/vpconnect \
-		golang:1.12-alpine3.9 \
-		sh -c "apk --update add git && go build -o /build/vpconnect"
+		golang:1.12-alpine3.10 \
+		sh -c "apk --update add git && go build -ldflags='-s -w' -o /build/vpconnect"
 	@echo "\n\nbuild/vpconnect successfully built"
 
 
