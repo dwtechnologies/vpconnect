@@ -54,7 +54,7 @@ deploy-cf:
 			Environment=$(ENVIRONMENT) \
 			Project=$(PROJECT) \
 			Owner=$(OWNER)
-	@echo "\n\nService $(PROJECT)-$(SERVICE)-$(ENVIRONMENT) successfully deployed"
+	@echo "Service $(PROJECT)-$(SERVICE)-$(ENVIRONMENT) successfully deployed"
 
 
 docker: go-build docker-build docker-push
@@ -69,7 +69,7 @@ go-build:
 		-w /src/vpconnect/vpconnect \
 		golang:1.12-alpine3.10 \
 		sh -c "apk --update add git && go build -ldflags='-s -w' -o /build/vpconnect"
-	@echo "\n\nbuild/vpconnect successfully built"
+	@echo "vpconnect successfully built"
 
 
 docker-build:
@@ -82,9 +82,9 @@ docker-push: docker-build
 	docker tag vpconnect:latest $(REPO)/vpconnect:$(HASH)
 	@eval $(shell aws ecr get-login --no-include-email)
 	docker push $(REPO)/vpconnect:$(HASH)
-	@echo "\n\nDocker image pushed ($(REPO)/vpconnect:$(HASH))"
+	@echo "Docker image pushed ($(REPO)/vpconnect:$(HASH))"
 
 
 clean:
 	rm -rf ./build
-	@echo "\n\nProject cleaned"
+	@echo "Project cleaned"
