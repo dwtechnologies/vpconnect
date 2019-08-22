@@ -10,8 +10,8 @@ RUN apk --update add curl curl-dev iptables iptables-dev \
 RUN mkdir -p /tmp/src/strongswan
 WORKDIR /tmp/strongswan
 
-RUN echo "d449aa1936218a42e34c32494947308b  strongswan.tar.gz" > strongswan.tar.gz.md5 
-RUN curl -L -o strongswan.tar.gz https://download.strongswan.org/strongswan-5.7.2.tar.gz
+RUN echo "be48945a55cd2f20b206816df181605d  strongswan.tar.gz" > strongswan.tar.gz.md5 
+RUN curl -L -o strongswan.tar.gz https://download.strongswan.org/strongswan-5.8.0.tar.gz
 RUN md5sum -c strongswan.tar.gz.md5
 
 RUN tar -C ./ --strip-components=1 -xzf strongswan.tar.gz
