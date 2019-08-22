@@ -2,10 +2,7 @@
 
 PWD          = $(shell pwd)
 PROJECT      = vpconnect
-
-OWNER       ?=
-AWS_REGION  ?=
-AWS_PROFILE ?=
+OWNER       ?= 
 
 # Check vars inside targets by calling "@:$(call check_var, VAR)"
 check_var = $(strip $(foreach 1,$1,$(call __check_var,$1,$(strip $(value 2)))))
@@ -80,12 +77,10 @@ docker-build:
 
 
 docker-push: docker-build
-	@:$(call check_var, AWS_REGION)
-	@:$(call check_var, AWS_PROFILE)
 	@:$(call check_var, REPO)
 	$(eval HASH := $(shell docker inspect --format='{{.Id}}' vpconnect:latest | tr -d 'sha256:'))
 	docker tag vpconnect:latest $(REPO)/vpconnect:$(HASH)
-	@eval $(shell aws ecr get-login --no-include-email --profile $(AWS_PROFILE) --region $(AWS_REGION))
+	@eval $(shell aws ecr get-login --no-include-email)
 	docker push $(REPO)/vpconnect:$(HASH)
 	@echo "\n\nDocker image pushed ($(REPO)/vpconnect:$(HASH))"
 
