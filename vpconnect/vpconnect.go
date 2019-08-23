@@ -16,8 +16,12 @@ type vpconnect struct {
 	Rules       []*rule       `yaml:"Rules"`
 
 	CheckInterval int `yaml:"CheckInterval"`
-	desiredRules  []*parsedRule
-	activeRules   []*parsedRule
+
+	// Don't start charon. Program can be used as PF.
+	NoIpsec bool `yaml:"NoIpsec"`
+
+	desiredRules []*parsedRule
+	activeRules  []*parsedRule
 
 	charonLogLevel int
 	check          *time.Ticker
@@ -54,11 +58,20 @@ type remote struct {
 // rule contains the raw rule before it's been processed to a format
 // that can be used by iptables.
 type rule struct {
-	From      []string `yaml:"From"`
-	To        []string `yaml:"To"`
-	Ports     []int    `yaml:"Ports"`
-	Protocols []string `yaml:"Protocols"`
-	Masq      bool     `yaml:"Masq"`
+	From        []string     `yaml:"From"`
+	To          []string     `yaml:"To"`
+	Ports       []int        `yaml:"Ports"`
+	Protocols   []string     `yaml:"Protocols"`
+	Masq        bool         `yaml:"Masq"`
+	PortForward *portForward `yaml:"PortForward"`
+}
+
+// portForward enables port forward instead of VPN based rules.
+// It will allow traffic to the EIP and forward it and do port
+// translation if enabled.
+type portForward struct {
+	Enabled bool        `yaml:"Enabled"`
+	PortMap map[int]int `yaml:"PortMap"`
 }
 
 // parsedRule contains the rule in a way that can be used by iptables.
