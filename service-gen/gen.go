@@ -76,29 +76,29 @@ func gen(name string, env string) error {
 // It will then marshal it to a bytes representation of the YAML array.
 // Returns error.
 func (c *file) generateAutomaticIngress() error {
-	a := []ingress{}
+	if c.Config.NoIpsec {
+		return nil
+	}
 
-	// Add the Remote IPs to the slice if NoIpsec isn't true.
-	if !c.Config.NoIpsec {
-		for _, conn := range c.Config.Connections {
-			for _, remote := range conn.Remotes {
-				a = append(a,
-					ingress{
-						Description: "Allow ipsec/isakmp",
-						IpProtocol:  "udp",
-						FromPort:    500,
-						ToPort:      500,
-						CidrIp:      fmt.Sprintf("%s/32", remote.Ip),
-					},
-					ingress{
-						Description: "Allow ipsec/esp",
-						IpProtocol:  "udp",
-						FromPort:    4500,
-						ToPort:      4500,
-						CidrIp:      fmt.Sprintf("%s/32", remote.Ip),
-					},
-				)
-			}
+	a := []ingress{}
+	for _, conn := range c.Config.Connections {
+		for _, remote := range conn.Remotes {
+			a = append(a,
+				ingress{
+					Description: "Allow ipsec/isakmp",
+					IpProtocol:  "udp",
+					FromPort:    500,
+					ToPort:      500,
+					CidrIp:      fmt.Sprintf("%s/32", remote.Ip),
+				},
+				ingress{
+					Description: "Allow ipsec/esp",
+					IpProtocol:  "udp",
+					FromPort:    4500,
+					ToPort:      4500,
+					CidrIp:      fmt.Sprintf("%s/32", remote.Ip),
+				},
+			)
 		}
 	}
 
@@ -156,8 +156,6 @@ func (c *file) validateConfig() error {
 		return fmt.Errorf("Name is required and can't be empty")
 	case c.Environment == "":
 		return fmt.Errorf("Environment is required and can't be empty")
-	case len(c.Config.Connections) == 0:
-		return fmt.Errorf("You need at least 1 Connection")
 	case c.Network.VpcId == "":
 		return fmt.Errorf("Network.VpcID is required and can't be empty")
 	case c.Network.PublicSubnetId == "":
@@ -178,23 +176,25 @@ func (c *file) validateConfig() error {
 		return fmt.Errorf("Ecs.AlarmSnsArn is required and can't be empty")
 	case c.Ecs.AmiImageId == "" && strings.ToLower(c.Region) == "china":
 		return fmt.Errorf("Ecs.AmiImageId is required and can't be empty")
-	case c.Config.Connections[0].Name == "":
+	case !c.Config.NoIpsec && len(c.Config.Connections) == 0:
+		return fmt.Errorf("You need at least 1 Connection")
+	case !c.Config.NoIpsec && c.Config.Connections[0].Name == "":
 		return fmt.Errorf("Config.Connections.Name is required and can't be empty")
-	case c.Config.Connections[0].IkeLifeTime == 0:
+	case !c.Config.NoIpsec && c.Config.Connections[0].IkeLifeTime == 0:
 		return fmt.Errorf("Config.Connections.IkeVersion is required and must be either 1 or 2")
-	case c.Config.Connections[0].PskEncrypted == "" && strings.ToLower(c.Region) != "china":
+	case !c.Config.NoIpsec && c.Config.Connections[0].PskEncrypted == "" && strings.ToLower(c.Region) != "china":
 		return fmt.Errorf("Config.Connections.PskEncrypted is required and can't be empty")
-	case c.Config.Connections[0].Psk == "" && strings.ToLower(c.Region) == "china":
+	case !c.Config.NoIpsec && c.Config.Connections[0].Psk == "" && strings.ToLower(c.Region) == "china":
 		return fmt.Errorf("Config.Connections.Psk is required and can't be empty")
-	case len(c.Config.Connections[0].Local.Subnets) == 0:
+	case !c.Config.NoIpsec && len(c.Config.Connections[0].Local.Subnets) == 0:
 		return fmt.Errorf("You need at least 1 Config.Connections.Local.Subnets")
-	case len(c.Config.Connections[0].Remotes) == 0:
+	case !c.Config.NoIpsec && len(c.Config.Connections[0].Remotes) == 0:
 		return fmt.Errorf("You need at least 1 Config.Connections.Remotes")
-	case c.Config.Connections[0].Remotes[0].Name == "":
+	case !c.Config.NoIpsec && c.Config.Connections[0].Remotes[0].Name == "":
 		return fmt.Errorf("Config.Connections.Remotes.Name needs to be set")
-	case len(c.Config.Connections[0].Remotes[0].Subnets) == 0:
+	case !c.Config.NoIpsec && len(c.Config.Connections[0].Remotes[0].Subnets) == 0:
 		return fmt.Errorf("You need at least 1 Config.Connections.Remotes.Subnets")
-	case c.Config.Connections[0].Remotes[0].Ip == "":
+	case !c.Config.NoIpsec && c.Config.Connections[0].Remotes[0].Ip == "":
 		return fmt.Errorf("Config.Connections.Remotes.Ip is required and can't be empty")
 	}
 
