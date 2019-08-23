@@ -37,14 +37,11 @@ gen:
 deploy-cf:
 	@:$(call check_var, SERVICE)
 	@:$(call check_var, ENVIRONMENT)
-	@:$(call check_var, AWS_REGION)
-	@:$(call check_var, AWS_PROFILE)
 	@:$(call check_var, PROJECT)
 	@:$(call check_var, OWNER)
 	@aws cloudformation deploy \
 		--template-file ./services/$(SERVICE)-$(ENVIRONMENT)/cf.yaml \
 		--stack-name $(PROJECT)-$(SERVICE)-$(ENVIRONMENT) \
-		--profile $(AWS_PROFILE) --region $(AWS_REGION) \
 		--capabilities CAPABILITY_NAMED_IAM \
 		--no-fail-on-empty-changeset \
 		--parameter-overrides \
