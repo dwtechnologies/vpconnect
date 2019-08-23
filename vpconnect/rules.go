@@ -2,8 +2,6 @@ package main
 
 import (
 	"fmt"
-	"os"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -53,25 +51,15 @@ func (v *vpconnect) createTicker() error {
 	defer print(&msg{Message: "v.createTicker(): Returning", LogLevel: "debug"})
 
 	print(&msg{Message: "v.createTicker(): Getting ticker interval", LogLevel: "debug"})
-	interval := os.Getenv("CHECK_INTERVAL")
 	dur := time.Duration(0)
 
-	switch {
-	case interval != "":
-		i, err := strconv.Atoi(interval)
-		if err != nil {
-			return fmt.Errorf("v.createTicker(): CHECK_INTERVAL set (%s) but couldn't be converted to integer. Error %s", interval, err.Error())
-		}
-
-		// Treat 0 as not set and default to 300.
-		if i == 0 {
-			i = 300
-		}
-		dur = time.Duration(i) * time.Second
+	switch v.CheckInterval {
+	case 0:
+		print(&msg{Message: "v.createTicker(): CheckInterval not set. Defaulting to 300 seconds", LogLevel: "debug"})
+		dur = time.Duration(300) * time.Second
 
 	default:
-		print(&msg{Message: "v.createTicker(): CHECK_INTERVAL not set. Defaulting to 300 seconds", LogLevel: "debug"})
-		dur = time.Duration(300) * time.Second
+		dur = time.Duration(v.CheckInterval) * time.Second
 	}
 
 	// Create a channel that triggers every dur seconds.
@@ -134,9 +122,9 @@ func (v *vpconnect) compareDesiredAndActiveRules() ([]int, []int) {
 	// ones. If the rule isn't found in the active rules slice add
 	// the desiredRules slice key to the addKeys int slice.
 	for desiredKey, desiredState := range v.desiredRules {
-		// state == 1, key will be added.
-		// state  == 0, key already exists.
-		state := 1
+		// state == false, key will be added.
+		// state  == true, key already exists.
+		state := false
 		key := desiredKey
 
 		for activeKey, activeState := range v.activeRules {
@@ -145,33 +133,42 @@ func (v *vpconnect) compareDesiredAndActiveRules() ([]int, []int) {
 			// And set the state to 0. To indicate it shouldn't
 			// be added.
 			if v.compareRules(desiredState, activeState) {
-				state = 0
+				state = true
 				key = activeKey
+				break
 			}
 		}
 
 		switch state {
 		// Key already exists, add to the sameKeys int slice.
-		case 0:
+		case true:
 			sameKeys = append(sameKeys, key)
 		// Key doesn't exist, add to the addKeys int slice.
-		case 1:
+		case false:
 			addKeys = append(addKeys, key)
 		}
 	}
 
 	// If the length os sameKeys and v.activeRules aren't the same
 	// there is keys thats need to be deleted. So go through them.
-	//TODO: This could be optimized. It's not the fastest solution.
 	if len(sameKeys) != len(v.activeRules) {
 		// Loop through all activeKeys and see if the key exists
 		// there or not. If it doesn't add the key to deleteKeys
 		// slice of ints.
 		for activeKey := range v.activeRules {
+			match := false
+
 			for _, sameKey := range sameKeys {
-				if activeKey != sameKey {
-					deleteKeys = append(deleteKeys, activeKey)
+				if activeKey == sameKey {
+					match = true
+					break
 				}
+			}
+
+			// If no match was found in the already active keys
+			// we should add it to the deleteKeys slice.
+			if !match {
+				deleteKeys = append(deleteKeys, activeKey)
 			}
 		}
 	}
@@ -211,17 +208,18 @@ func (v *vpconnect) generateRules() error {
 	// Make a channel for sending rules so we can append them
 	// to a the desired slice of rules.
 	c := make(chan *parsedRule)
+	wg := &sync.WaitGroup{}
 	rules := []*parsedRule{}
 
 	// Append all rules to the rules slice.
-	go func() {
+	go func(wg *sync.WaitGroup) {
 		for r := range c {
 			rules = append(rules, r)
+			wg.Done()
 		}
-	}()
+	}(wg)
 
 	// Loop through all the imported rules.
-	wg := &sync.WaitGroup{}
 	for _, r := range v.Rules {
 		currentRule := r
 		wg.Add(1)
@@ -240,7 +238,6 @@ func (v *vpconnect) generateRules() error {
 
 	// Set the desired rules.
 	v.desiredRules = rules
-	// v.sortDesiredRules()
 	return nil
 }
 
@@ -253,7 +250,7 @@ func (v *vpconnect) generateRulesFrom(c chan *parsedRule, w *sync.WaitGroup, r *
 	print(&msg{Message: "v.generateRulesFrom(): Entering", LogLevel: "debug"})
 	defer print(&msg{Message: "v.generateRulesFrom(): Returning", LogLevel: "debug"})
 
-	wg := &sync.WaitGroup{}
+	defer w.Wait()
 	defer w.Done()
 
 	currentRule := r
@@ -269,11 +266,10 @@ func (v *vpconnect) generateRulesFrom(c chan *parsedRule, w *sync.WaitGroup, r *
 		for _, fromCIDR := range currentFromList {
 			currentFrom := fromCIDR
 
-			wg.Add(1)
-			go v.generateRulesTo(c, wg, currentRule, currentFrom)
+			w.Add(1)
+			go v.generateRulesTo(c, w, currentRule, currentFrom)
 		}
 	}
-	wg.Wait()
 }
 
 // generateRulesTo creates rules based on from and to addresses from the r.To slice.
@@ -285,7 +281,7 @@ func (v *vpconnect) generateRulesTo(c chan *parsedRule, w *sync.WaitGroup, r *ru
 	print(&msg{Message: "v.generateRulesTo(): Entering", LogLevel: "debug"})
 	defer print(&msg{Message: "v.generateRulesTo(): Returning", LogLevel: "debug"})
 
-	wg := &sync.WaitGroup{}
+	defer w.Wait()
 	defer w.Done()
 
 	currentRule := r
@@ -302,11 +298,10 @@ func (v *vpconnect) generateRulesTo(c chan *parsedRule, w *sync.WaitGroup, r *ru
 		for _, toCIDR := range currentToList {
 			currentTo := toCIDR
 
-			wg.Add(1)
-			go v.generateRulesProtocol(c, wg, currentRule, currentFrom, currentTo)
+			w.Add(1)
+			go v.generateRulesProtocol(c, w, currentRule, currentFrom, currentTo)
 		}
 	}
-	wg.Wait()
 }
 
 // generateRulesProtocol creates rules based on from and to and the protocols in the r.Protocols slice.
@@ -316,7 +311,7 @@ func (v *vpconnect) generateRulesProtocol(c chan *parsedRule, w *sync.WaitGroup,
 	print(&msg{Message: "v.generateRulesProtocol(): Entering", LogLevel: "debug"})
 	defer print(&msg{Message: "v.generateRulesProtocol(): Returning", LogLevel: "debug"})
 
-	wg := &sync.WaitGroup{}
+	defer w.Wait()
 	defer w.Done()
 
 	currentRule := r
@@ -336,10 +331,9 @@ func (v *vpconnect) generateRulesProtocol(c chan *parsedRule, w *sync.WaitGroup,
 			continue
 		}
 
-		wg.Add(1)
-		go v.generateRulesPort(c, wg, currentRule, currentFrom, currentTo, currentProtocol)
+		w.Add(1)
+		go v.generateRulesPort(c, w, currentRule, currentFrom, currentTo, currentProtocol)
 	}
-	wg.Wait()
 }
 
 // generateRulesPort creates rules based on from, to protocol and masq for
@@ -351,7 +345,7 @@ func (v *vpconnect) generateRulesPort(c chan *parsedRule, w *sync.WaitGroup, r *
 	print(&msg{Message: "v.generateRulesPort(): Entering", LogLevel: "debug"})
 	defer print(&msg{Message: "v.generateRulesPort(): Returning", LogLevel: "debug"})
 
-	wg := &sync.WaitGroup{}
+	defer w.Wait()
 	defer w.Done()
 
 	currentRule := r
@@ -363,8 +357,8 @@ func (v *vpconnect) generateRulesPort(c chan *parsedRule, w *sync.WaitGroup, r *
 	// Use port value -1 for icmp, to indicate that port is not used.
 	case currentProtocol == "icmp":
 		currentPort := -1
-		wg.Add(1)
-		go v.generateRulesFinalize(c, wg, currentRule, currentFrom, currentTo, currentProtocol, currentPort)
+		w.Add(1)
+		go v.generateRulesFinalize(c, w, currentRule, currentFrom, currentTo, currentProtocol, currentPort)
 
 	default:
 		for _, port := range r.Ports {
@@ -381,11 +375,10 @@ func (v *vpconnect) generateRulesPort(c chan *parsedRule, w *sync.WaitGroup, r *
 				continue
 			}
 
-			wg.Add(1)
-			go v.generateRulesFinalize(c, wg, currentRule, currentFrom, currentTo, currentProtocol, currentPort)
+			w.Add(1)
+			go v.generateRulesFinalize(c, w, currentRule, currentFrom, currentTo, currentProtocol, currentPort)
 		}
 	}
-	wg.Wait()
 }
 
 // generateRulesFinalize will put together all the rule and send it to the rule channel
@@ -393,8 +386,6 @@ func (v *vpconnect) generateRulesPort(c chan *parsedRule, w *sync.WaitGroup, r *
 func (v *vpconnect) generateRulesFinalize(c chan *parsedRule, w *sync.WaitGroup, r *rule, from string, to string, protocol string, port int) {
 	print(&msg{Message: "v.generateRulesFinalize(): Entering", LogLevel: "debug"})
 	defer print(&msg{Message: "v.generateRulesFinalize(): Returning", LogLevel: "debug"})
-
-	defer w.Done()
 
 	c <- &parsedRule{
 		from:       from,
