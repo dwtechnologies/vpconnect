@@ -13,5 +13,6 @@ var (
 		"DiffieHellman": "modp2048",
 		"IkeLifeTime":   10800,
 		"IpsecLifeTime": 3600,
+		"NoIpsec":       false,
 	}
 )

@@ -32,6 +32,7 @@ type config struct {
 	Connections   []connection `yaml:"Connections"`
 	Rules         []rule       `yaml:"Rules"`
 	CheckInterval int          `yaml:"CheckInterval"`
+	NoIpsec       bool         `yaml:"NoIpsec"`
 }
 
 type network struct {
@@ -78,11 +79,12 @@ type remote struct {
 }
 
 type rule struct {
-	From      []string `yaml:"From"`
-	To        []string `yaml:"To"`
-	Ports     []int    `yaml:"Ports"`
-	Protocols []string `yaml:"Protocols"`
-	Masq      bool     `yaml:"Masq"`
+	From        []string    `yaml:"From"`
+	To          []string    `yaml:"To"`
+	Ports       []int       `yaml:"Ports"`
+	PortForward map[int]int `yaml:"PortForward"`
+	Protocols   []string    `yaml:"Protocols"`
+	Masq        bool        `yaml:"Masq"`
 }
 
 type ingress struct {

@@ -78,25 +78,27 @@ func gen(name string, env string) error {
 func (c *file) generateAutomaticIngress() error {
 	a := []ingress{}
 
-	// Add the Remote IPs to the slice.
-	for _, conn := range c.Config.Connections {
-		for _, remote := range conn.Remotes {
-			a = append(a,
-				ingress{
-					Description: "Allow ipsec/isakmp",
-					IpProtocol:  "udp",
-					FromPort:    500,
-					ToPort:      500,
-					CidrIp:      fmt.Sprintf("%s/32", remote.Ip),
-				},
-				ingress{
-					Description: "Allow ipsec/esp",
-					IpProtocol:  "udp",
-					FromPort:    4500,
-					ToPort:      4500,
-					CidrIp:      fmt.Sprintf("%s/32", remote.Ip),
-				},
-			)
+	// Add the Remote IPs to the slice if NoIpsec isn't true.
+	if !c.Config.NoIpsec {
+		for _, conn := range c.Config.Connections {
+			for _, remote := range conn.Remotes {
+				a = append(a,
+					ingress{
+						Description: "Allow ipsec/isakmp",
+						IpProtocol:  "udp",
+						FromPort:    500,
+						ToPort:      500,
+						CidrIp:      fmt.Sprintf("%s/32", remote.Ip),
+					},
+					ingress{
+						Description: "Allow ipsec/esp",
+						IpProtocol:  "udp",
+						FromPort:    4500,
+						ToPort:      4500,
+						CidrIp:      fmt.Sprintf("%s/32", remote.Ip),
+					},
+				)
+			}
 		}
 	}
 

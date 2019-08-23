@@ -74,6 +74,7 @@ func newConfig(name string, env string, region string) *file {
 			},
 			Rules:         []rule{},
 			CheckInterval: def["CheckInterval"].(int),
+			NoIpsec:       def["NoIpsec"].(bool),
 		},
 
 		Debug: def["Debug"].(bool),
