@@ -58,30 +58,23 @@ type remote struct {
 // rule contains the raw rule before it's been processed to a format
 // that can be used by iptables.
 type rule struct {
-	From        []string     `yaml:"From"`
-	To          []string     `yaml:"To"`
-	Ports       []int        `yaml:"Ports"`
-	Protocols   []string     `yaml:"Protocols"`
-	Masq        bool         `yaml:"Masq"`
-	PortForward *portForward `yaml:"PortForward"`
-}
-
-// portForward enables port forward instead of VPN based rules.
-// It will allow traffic to the EIP and forward it and do port
-// translation if enabled.
-type portForward struct {
-	Enabled bool        `yaml:"Enabled"`
-	PortMap map[int]int `yaml:"PortMap"`
+	From        []string    `yaml:"From"`
+	To          []string    `yaml:"To"`
+	Ports       []int       `yaml:"Ports"`
+	PortForward map[int]int `yaml:"PortForward"`
+	Protocols   []string    `yaml:"Protocols"`
+	Masq        bool        `yaml:"Masq"`
 }
 
 // parsedRule contains the rule in a way that can be used by iptables.
 type parsedRule struct {
-	to         string
-	from       string
-	port       int
-	protocol   string
-	masquerade bool
-	err        error
+	to          string
+	from        string
+	port        int
+	portforward int
+	protocol    string
+	masquerade  bool
+	err         error
 }
 
 // Allowed types. Currently we only support subnet-2-subnet VPN (subnet).
