@@ -30,15 +30,19 @@ func config() (*vpconnect, error) {
 	if err := v.configElasticIp(); err != nil {
 		return nil, err
 	}
-	// Validate Connections.
-	if err := v.configConnections(); err != nil {
-		return nil, err
+
+	// Don't configure IPSec if we shouldn't run it.
+	if !v.NoIpsec {
+		// Validate Connections.
+		if err := v.configConnections(); err != nil {
+			return nil, err
+		}
+		// Set Charon debug level.
+		v.configCharonLogLevel()
 	}
-	// Set Charon debug level.
-	v.configCharonLogLevel()
 
 	print(&msg{Message: "v.config(): Getting configuration done", LogLevel: "info"})
-	return nil, nil
+	return v, nil
 }
 
 // removeSpaces will remove any spaces from str.
@@ -219,7 +223,7 @@ func (c *connection) configVpnType() error {
 		return fmt.Errorf("c.configVpnType(): Connection %s's VPN type %s is not a valid. Valid values %s", c.Name, c.Type, allowedVpnTypes)
 	}
 
-	print(&msg{Message: fmt.Sprintf("c.configVpnType(): Connection %s configured as VPN type %s",c.Name,c.Type), LogLevel: "info"})
+	print(&msg{Message: fmt.Sprintf("c.configVpnType(): Connection %s configured as VPN type %s", c.Name, c.Type), LogLevel: "info"})
 	return nil
 }
 
