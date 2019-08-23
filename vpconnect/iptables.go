@@ -18,8 +18,6 @@ var iptablesInitArgs = [][]string{
 	[]string{"-F"},                     // Flush filter table.
 	[]string{"-X"},                     // Delete custom filter.
 
-	// Don't do any POSTROUTING on ipsec packets.
-	[]string{"-t", "nat", "-I", "POSTROUTING", "1", "-m", "policy", "--pol", "ipsec", "--dir", "out", "-j", "ACCEPT"},
 	// Accept established and related on INPUT chain.
 	[]string{"-A", "INPUT", "-m", "state", "--state", "ESTABLISHED,RELATED", "-j", "ACCEPT"},
 	// Accept established and related on FORWARD chain.
@@ -41,10 +39,18 @@ func (v *vpconnect) initIptables() error {
 
 	// Create list and add primary and secondary IP to the list.
 	list := iptablesInitArgs
-	for _, conn := range v.Connections {
-		for _, remote := range conn.Remotes {
-			list = append(list, []string{"-A", "INPUT", "-s", fmt.Sprintf("%s/32", remote.Ip), "-p", "udp", "--dport", "500", "-i", "eth1", "-j", "ACCEPT"})
-			list = append(list, []string{"-A", "INPUT", "-s", fmt.Sprintf("%s/32", remote.Ip), "-p", "udp", "--dport", "4500", "-i", "eth1", "-j", "ACCEPT"})
+
+	// Don't add IPSec specific rules if we started with no IPSec.
+	if !v.NoIpsec {
+		// Do not do any POSTROUTING on ipsec packets.
+		list = append(list, []string{"-t", "nat", "-I", "POSTROUTING", "1", "-m", "policy", "--pol", "ipsec", "--dir", "out", "-j", "ACCEPT"})
+
+		// Loop over all connections and add rules for all remotes.
+		for _, conn := range v.Connections {
+			for _, remote := range conn.Remotes {
+				list = append(list, []string{"-A", "INPUT", "-s", fmt.Sprintf("%s/32", remote.Ip), "-p", "udp", "--dport", "500", "-i", "eth1", "-j", "ACCEPT"})
+				list = append(list, []string{"-A", "INPUT", "-s", fmt.Sprintf("%s/32", remote.Ip), "-p", "udp", "--dport", "4500", "-i", "eth1", "-j", "ACCEPT"})
+			}
 		}
 	}
 
@@ -84,6 +90,9 @@ func (v *vpconnect) addIptableRule(r *parsedRule) error {
 		if r.masquerade {
 			list = append(list, []string{"-t", "nat", "-A", "POSTROUTING", "-s", r.from, "-d", r.to, "-p", r.protocol, "--dport", strconv.Itoa(r.port), "-o", "eth1", "-j", "MASQUERADE"})
 		}
+		if r.portforward != 0 {
+			list = append(list, []string{"-t", "nat", "-A", "PREROUTING", "-s", r.from, "-p", r.protocol, "--dport", strconv.Itoa(r.port), "-i", "eth1", "-j", "DNAT", "--to", fmt.Sprintf("%s:%s", r.to, r.portforward)})
+		}
 
 		print(&msg{Message: fmt.Sprintf("v.addIptableRule(): Adding rule for %s to %s/%s:%d with masquerading set to %t", r.from, r.protocol, r.to, r.port, r.masquerade), LogLevel: "info"})
 	}
@@ -120,6 +129,9 @@ func (v *vpconnect) deleteIptableRule(r *parsedRule) error {
 		list = append(list, []string{"-D", "FORWARD", "-s", r.from, "-d", r.to, "--dport", strconv.Itoa(r.port), "-p", r.protocol, "-i", "eth1", "-j", "ACCEPT"})
 		if r.masquerade {
 			list = append(list, []string{"-t", "nat", "-D", "POSTROUTING", "-s", r.from, "-d", r.to, "--dport", strconv.Itoa(r.port), "-p", r.protocol, "-o", "eth1", "-j", "MASQUERADE"})
+		}
+		if r.portforward != 0 {
+			list = append(list, []string{"-t", "nat", "-D", "PREROUTING", "-s", r.from, "-p", r.protocol, "--dport", strconv.Itoa(r.port), "-i", "eth1", "-j", "DNAT", "--to", fmt.Sprintf("%s:%s", r.to, r.portforward)})
 		}
 
 		print(&msg{Message: fmt.Sprintf("v.deleteIptableRule(): Deleting rule for %s to %s/%s:%d with masquerading set to %t", r.from, r.protocol, r.to, r.port, r.masquerade), LogLevel: "info"})
