@@ -358,11 +358,12 @@ func (v *vpconnect) generateRulesPort(c chan *parsedRule, w *sync.WaitGroup, r *
 	case currentProtocol == "icmp":
 		currentPort := -1
 		w.Add(1)
-		go v.generateRulesFinalize(c, w, currentRule, currentFrom, currentTo, currentProtocol, currentPort)
+		go v.generateRulesFinalize(c, w, currentRule, currentFrom, currentTo, currentProtocol, currentPort, 0)
 
 	default:
 		for _, port := range r.Ports {
 			currentPort := port
+			currentPf := 0
 
 			// Validate that port is between 1-65535.
 			switch {
@@ -375,23 +376,29 @@ func (v *vpconnect) generateRulesPort(c chan *parsedRule, w *sync.WaitGroup, r *
 				continue
 			}
 
+			// Check if current port is in port forward map.
+			if pf, ok := r.PortForward[currentPort]; ok {
+				currentPf = pf
+			}
+
 			w.Add(1)
-			go v.generateRulesFinalize(c, w, currentRule, currentFrom, currentTo, currentProtocol, currentPort)
+			go v.generateRulesFinalize(c, w, currentRule, currentFrom, currentTo, currentProtocol, currentPort, currentPf)
 		}
 	}
 }
 
 // generateRulesFinalize will put together all the rule and send it to the rule channel
 // so it can be merged into a desired rule slice.
-func (v *vpconnect) generateRulesFinalize(c chan *parsedRule, w *sync.WaitGroup, r *rule, from string, to string, protocol string, port int) {
+func (v *vpconnect) generateRulesFinalize(c chan *parsedRule, w *sync.WaitGroup, r *rule, from string, to string, protocol string, port int, currentPf int) {
 	print(&msg{Message: "v.generateRulesFinalize(): Entering", LogLevel: "debug"})
 	defer print(&msg{Message: "v.generateRulesFinalize(): Returning", LogLevel: "debug"})
 
 	c <- &parsedRule{
-		from:       from,
-		to:         to,
-		port:       port,
-		protocol:   protocol,
-		masquerade: r.Masq,
+		from:        from,
+		to:          to,
+		port:        port,
+		portforward: currentPf,
+		protocol:    protocol,
+		masquerade:  r.Masq,
 	}
 }
