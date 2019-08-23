@@ -50,18 +50,21 @@ func main() {
 		exit(1)
 	}
 
-	// Generate the IPSec config files.
-	if err := v.create(); err != nil {
-		print(&msg{Message: err.Error(), LogLevel: "error"})
-		exit(1)
-	}
+	// Don't start IPSec if config says no IPSec.
+	if !v.NoIpsec {
+		// Generate the IPSec config files.
+		if err := v.create(); err != nil {
+			print(&msg{Message: err.Error(), LogLevel: "error"})
+			exit(1)
+		}
 
-	// Start ipsec and checker.
-	if err := v.start(); err != nil {
-		print(&msg{Message: err.Error(), LogLevel: "error"})
-		exit(1)
+		// Start ipsec and checker.
+		if err := v.start(); err != nil {
+			print(&msg{Message: err.Error(), LogLevel: "error"})
+			exit(1)
+		}
+		v.ipsec()
 	}
-	v.ipsec()
 
 	// Wait until we receive an exit signal.
 	v.wait()
