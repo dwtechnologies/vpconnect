@@ -116,9 +116,11 @@ func (v *vpconnect) wait() {
 	<-v.stopping
 	v.check.Stop()
 
-	if err := v.stop(); err != nil {
-		print(&msg{Message: err.Error(), LogLevel: "error"})
-		exit(1)
+	if !v.NoIpsec {
+		if err := v.stop(); err != nil {
+			print(&msg{Message: err.Error(), LogLevel: "error"})
+			exit(1)
+		}
 	}
 
 	exit(0)
