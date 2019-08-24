@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"net"
+	"strings"
 )
 
 // getCIDR takes input and check if it's a valid CIDR, IP or
@@ -78,4 +79,14 @@ func dnsLookup(host string) ([]string, error) {
 	}
 
 	return ret, nil
+}
+
+// removeNetmask will remove any netmask annotation on ip.
+func removeNetmask(ip string) string {
+	print(&msg{Message: "removeNetmask(): Entering", LogLevel: "debug"})
+	defer print(&msg{Message: "removeNetmask(): Returning", LogLevel: "debug"})
+
+	slice := strings.Split(ip, "/")
+
+	return slice[0]
 }
