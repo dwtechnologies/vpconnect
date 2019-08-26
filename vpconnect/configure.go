@@ -4,7 +4,6 @@ import (
 	"encoding/base64"
 	"fmt"
 	"os"
-	"strconv"
 	"strings"
 
 	"gopkg.in/yaml.v2"
@@ -16,422 +15,494 @@ import (
 // env variables. It will also do some sanity checks on key config elements.
 // As well as set sensible defaults on others if not set.
 // Returns error.
-func (v *vpconnect) config() error {
+func config() (*vpconnect, error) {
 	print(&msg{Message: "v.config(): Entering", LogLevel: "debug"})
 	defer print(&msg{Message: "v.config(): Returning", LogLevel: "debug"})
 
-	// Validate and set VPN Type
-	if err := v.configVpnType(); err != nil {
-		return err
+	// Unmarshal the config.
+	v, err := configUnmarshal()
+	if err != nil {
+		return nil, err
 	}
-	// Validate and set VPN Ike Version
-	if err := v.configIkeVersion(); err != nil {
-		return err
-	}
+	// Create the stopping channel.
+	v.configStoppingChan()
 	// Validate and set Elastic IP
-	if err := v.configElasticIP(); err != nil {
-		return err
+	if err := v.configElasticIp(); err != nil {
+		return nil, err
 	}
-	// Validate and set Remote IPs
-	if err := v.configRemoteIPs(); err != nil {
-		return err
-	}
-	// Validate and set left and right subnets
-	if err := v.configSubnets(); err != nil {
-		return err
-	}
-	// Validate and set PSK
-	if err := v.configPSK(); err != nil {
-		return err
-	}
-	// Validate ands et charon log level.
-	if err := v.configCharonLogLevel(); err != nil {
-		return err
-	}
-	// Get Imported Rules.
-	if err := v.configImportedRules(); err != nil {
-		return err
-	}
-	// Configure Encryption.
-	if err := v.configEncryption(); err != nil {
-		return err
-	}
-	// Configure Integrity.
-	if err := v.configIntegrity(); err != nil {
-		return err
-	}
-	// Configure Diffie Hellman.
-	if err := v.configDiffieHellman(); err != nil {
-		return err
-	}
-	// Configure IKE Life Time.
-	if err := v.configIkeLifeTime(); err != nil {
-		return err
-	}
-	// Configure IPSEC Life Time.
-	if err := v.configIpsecLifeTime(); err != nil {
-		return err
+
+	// Don't configure IPSec if we shouldn't run it.
+	if !v.NoIpsec {
+		// Validate Connections.
+		if err := v.configConnections(); err != nil {
+			return nil, err
+		}
+		// Set Charon debug level.
+		v.configCharonLogLevel()
 	}
 
 	print(&msg{Message: "v.config(): Getting configuration done", LogLevel: "info"})
+	return v, nil
+}
+
+// removeSpaces will remove any spaces from str.
+// Returns string.
+func removeSpaces(str string) string {
+	return strings.Replace(str, " ", "", -1)
+}
+
+// stringExists checks if val exists in slice or not.
+// If it exists returns true.
+// Returns bool
+func stringExists(val string, slice []string) bool {
+	for _, sliceVal := range slice {
+		if sliceVal == val {
+			return true
+		}
+	}
+	return false
+}
+
+// intExists checks if val exists in slice or not.
+// If it exists returns true.
+// Returns bool
+func intExists(val int, slice []int) bool {
+	for _, sliceVal := range slice {
+		if sliceVal == val {
+			return true
+		}
+	}
+	return false
+}
+
+// configUnmarshal will get the CONFIG env var and base64 decode it and
+// YAML Unmarshal it to a vpconnect struct and return it and error.
+// Returns *vpconnect and error.
+func configUnmarshal() (*vpconnect, error) {
+	print(&msg{Message: "configUnmarshal(): Entering", LogLevel: "debug"})
+	defer print(&msg{Message: "configUnmarshal(): Returning", LogLevel: "debug"})
+
+	base := removeSpaces(os.Getenv("CONFIG"))
+
+	// Check that config isn't just an empty string.
+	if base == "" {
+		return nil, fmt.Errorf("configUnmarshal(): CONFIG not set")
+	}
+
+	// base64 decode the CONFIG env var.
+	raw, err := base64.StdEncoding.DecodeString(base)
+	if err != nil {
+		return nil, fmt.Errorf("configUnmarshal(): Couldn't base64 decode CONFIG. Error %s", err.Error())
+	}
+
+	// Unmarshal the CONFIG env var.
+	v := &vpconnect{}
+	if err := yaml.Unmarshal(raw, v); err != nil {
+		return nil, fmt.Errorf("configUnmarshal(): Couldn't unmarshal CONFIG to YAML. Error %s", err.Error())
+	}
+
+	print(&msg{Message: "configUnmarshal(): Successfully unmarshaled CONFIG", LogLevel: "info"})
+	return v, nil
+}
+
+// configStoppingChan creates the stopping channel.
+func (v *vpconnect) configStoppingChan() {
+	print(&msg{Message: "v.configStoppingChan(): Entering", LogLevel: "debug"})
+	defer print(&msg{Message: "v.configStoppingChan(): Returning", LogLevel: "debug"})
+
+	v.stopping = make(chan bool)
+}
+
+// configElasticIp will get the Elastic Ip from env variable and set it to vpconnect.
+// Returns error.
+func (v *vpconnect) configElasticIp() error {
+	print(&msg{Message: "v.configElasticIp(): Entering", LogLevel: "debug"})
+	defer print(&msg{Message: "v.configElasticIp(): Returning", LogLevel: "debug"})
+
+	eip := removeSpaces(os.Getenv("ELASTIC_IP"))
+
+	// Check that eip is not empty.
+	if eip == "" {
+		return fmt.Errorf("v.configElasticIp(): ELASTIC_IP not set")
+	}
+
+	// Validate IP the Elastic IP.
+	if !isValidIP(eip) {
+		return fmt.Errorf("v.configElasticIp(): Invalid IP found for Elastic IP. Got %s", eip)
+	}
+
+	v.elasticIp = eip
+	print(&msg{Message: fmt.Sprintf("v.configElasticIp(): Elastic IP set to %s", eip), LogLevel: "info"})
 	return nil
 }
 
-// configVpnType validates and sets the vpn type.
+// configConnections will loop over all connections and configure and
+// validate them.
 // Returns error.
-func (v *vpconnect) configVpnType() error {
-	print(&msg{Message: "v.configVpnType(): Entering", LogLevel: "debug"})
-	defer print(&msg{Message: "v.configVpnType(): Returning", LogLevel: "debug"})
+func (v *vpconnect) configConnections() error {
+	for _, conn := range v.Connections {
+		// Validate Connection name.
+		conNames := []string{}
+		if err := conn.configName(conNames); err != nil {
+			return err
+		}
+		// Valdidate Connection VPN type.
+		if err := conn.configVpnType(); err != nil {
+			return err
+		}
+		// Validate IKE Version.
+		if err := conn.configIkeVersion(); err != nil {
+			return err
+		}
+		// Config PSK.
+		if err := conn.configPSK(); err != nil {
+			return err
+		}
+		// Config Encryption.
+		if err := conn.configEncryption(); err != nil {
+			return err
+		}
+		// Config Integrity.
+		if err := conn.configIntegrity(); err != nil {
+			return err
+		}
+		// Config DiffieHellman.
+		if err := conn.configDiffieHellman(); err != nil {
+			return err
+		}
+		// Config IKE Lifetime.
+		conn.configIkeLifeTime()
+		// Config IPSec Lifetime.
+		conn.configIpsecLifeTime()
+		// Config Local.
+		if err := conn.configLocal(); err != nil {
+			return err
+		}
+		// Config Remotes.
+		if err := conn.configRemotes(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
 
-	// Replace any accidental spaces.
-	vpnType := strings.Replace(os.Getenv("VPN_TYPE"), " ", "", -1)
+// configName checks that Name is set on the connection. Returns error if it's not set.
+// Checks that the name is unique and doesn't exists in names.
+// Returns error
+func (c *connection) configName(names []string) error {
+	print(&msg{Message: "c.configName(): Entering", LogLevel: "debug"})
+	defer print(&msg{Message: "c.configName(): Returning", LogLevel: "debug"})
 
-	if vpnType == "" {
-		vpnType = "subnet"
+	// If Name is empty return error.
+	if c.Name == "" {
+		return fmt.Errorf("c.configName(): Name not set in one or more connections")
+	}
+
+	// Check if name is unique.
+	if stringExists(c.Name, names) {
+		return fmt.Errorf("c.configName(): Connection Name must be unique")
+	}
+
+	names = append(names, c.Name)
+	return nil
+}
+
+// configVpnType validates the connections vpn type.
+// Returns error.
+func (c *connection) configVpnType() error {
+	print(&msg{Message: "c.configVpnType(): Entering", LogLevel: "debug"})
+	defer print(&msg{Message: "c.configVpnType(): Returning", LogLevel: "debug"})
+
+	// If c.Type is empty, default to subnet.
+	if c.Type == "" {
+		c.Type = "subnet"
 	}
 
 	// Check if the specified type exists in the allowedVpnTypes slice.
-	for _, t := range allowedVpnTypes {
-		if t == vpnType {
-			v.vpnType = vpnType
-			return nil
-		}
+	if !stringExists(c.Type, allowedVpnTypes) {
+		return fmt.Errorf("c.configVpnType(): Connection %s's VPN type %s is not a valid. Valid values %s", c.Name, c.Type, allowedVpnTypes)
 	}
 
-	return fmt.Errorf("v.configVpnType(): VPN_TYPE %s is not a valid. Valid values are %s", vpnType, allowedVpnTypes)
-}
-
-// configIkeVersion validates and sets the ike version.
-// Returns error.
-func (v *vpconnect) configIkeVersion() error {
-	print(&msg{Message: "v.configIkeVersion(): Entering", LogLevel: "debug"})
-	defer print(&msg{Message: "v.configIkeVersion(): Returning", LogLevel: "debug"})
-
-	// Replace any accidental spaces.
-	ikeString := strings.Replace(os.Getenv("IKE_VERSION"), " ", "", -1)
-	ike, err := strconv.Atoi(ikeString)
-	if err != nil {
-		return fmt.Errorf("v.configIkeVersion(): IKE_VERSION couldn't be converted to integer. Valid values are between 1 or 2. Current value %s", ikeString)
-	}
-
-	if ike != 1 && ike != 2 {
-		return fmt.Errorf("v.configIkeVersion(): IKE_VERSION isn't valid. Valid values are between 1 or 2. Current value %d", ike)
-	}
-
-	v.ikeVersion = ike
+	print(&msg{Message: fmt.Sprintf("c.configVpnType(): Connection %s configured as VPN type %s", c.Name, c.Type), LogLevel: "info"})
 	return nil
 }
 
-// configElasticIP will get the Elastic IP from env variable and set it to vpconnect.
+// configIkeVersion validates the connections IKE version.
 // Returns error.
-func (v *vpconnect) configElasticIP() error {
-	print(&msg{Message: "v.configElasticIP(): Entering", LogLevel: "debug"})
-	defer print(&msg{Message: "v.configElasticIP(): Returning", LogLevel: "debug"})
+func (c *connection) configIkeVersion() error {
+	print(&msg{Message: "c.configIkeVersion(): Entering", LogLevel: "debug"})
+	defer print(&msg{Message: "c.configIkeVersion(): Returning", LogLevel: "debug"})
 
-	// Replace any accidental spaces.
-	eip := strings.Replace(os.Getenv("ELASTIC_IP"), " ", "", -1)
-
-	switch {
-	case eip == "":
-		return fmt.Errorf("v.configElasticIP(): ELASTIC_IP not set")
-
-	default:
-		v.left.elasticIP = eip
+	// If IkeVersion is 0, default to 2.
+	if c.IkeVersion == 0 {
+		c.IkeVersion = 2
 	}
 
-	print(&msg{Message: fmt.Sprintf("v.configElasticIP(): Elastic IP set to %s", eip), LogLevel: "info"})
-	return nil
-}
-
-// configRemoteIPs will configure the Primary and Secondary Remote IPs and set them to vpconnect.
-// Returns error.
-func (v *vpconnect) configRemoteIPs() error {
-	print(&msg{Message: "v.configRemoteIPs(): Entering", LogLevel: "debug"})
-	defer print(&msg{Message: "v.configRemoteIPs(): Returning", LogLevel: "debug"})
-
-	str := strings.Replace(os.Getenv("REMOTE_IPS"), " ", "", -1)
-	if str == "" {
-		return fmt.Errorf("v.configRemoteIPs(): REMOTE_IPS not set")
+	// Check if the specified IkeVersion exists in allowedIkeversions slice.
+	if !intExists(c.IkeVersion, allowedIkeVersions) {
+		return fmt.Errorf("c.configIkeVersion(): Connection %s's IKE version %d isn't valid. Valid values %d", c.Name, c.IkeVersion, allowedIkeVersions)
 	}
 
-	// Slice REMOTE_IPS variable
-	ips := strings.Split(str, ",")
-
-	for _, ip := range ips {
-		if v.isValidIP(ip) {
-			v.right.remoteIPs = append(v.right.remoteIPs, ip)
-			print(&msg{Message: fmt.Sprintf("v.configRemoteIPs(): Remote IP %s added", ip), LogLevel: "info"})
-		}
-	}
-
-	if len(v.right.remoteIPs) == 0 {
-		return fmt.Errorf("v.configRemoteIPs(): No valid Remote IPs found")
-	}
-
-	return nil
-}
-
-// configSubnets configures the left and right subnets and sets them to vpconnect.
-// Returns error.
-func (v *vpconnect) configSubnets() error {
-	print(&msg{Message: "v.configSubnets(): Entering", LogLevel: "debug"})
-	defer print(&msg{Message: "v.configSubnets(): Returning", LogLevel: "debug"})
-
-	// Replace any accidental spaces.
-	ls := strings.Split(strings.Replace(os.Getenv("SUBNETS_LOCAL"), " ", "", -1), ",")
-	rs := strings.Split(strings.Replace(os.Getenv("SUBNETS_REMOTE"), " ", "", -1), ",")
-
-	switch {
-	case len(ls) == 0:
-		return fmt.Errorf("v.configSubnets(): SUBNETS_LOCAL not set")
-
-	case len(rs) == 0:
-		return fmt.Errorf("v.configSubnets(): SUBNETS_REMOTE not set")
-
-	default:
-		v.left.subnets = ls
-		v.right.subnets = rs
-	}
-
-	print(&msg{Message: fmt.Sprintf("v.configSubnets(): Local subnets %s, Remote subnets %s", ls, rs), LogLevel: "info"})
+	print(&msg{Message: fmt.Sprintf("c.configIkeVersion(): Connection %s configured as IKE version %d", c.Name, c.IkeVersion), LogLevel: "info"})
 	return nil
 }
 
 // configPSK will decrypt the PSK set by env variable. Check that it's between 32 and 64 characters
 // in length (otherwise it's seen as insecure). And set the decrypted PSK to vpconnect.
 // Returns error.
-func (v *vpconnect) configPSK() error {
-	print(&msg{Message: "v.configPSK(): Entering", LogLevel: "debug"})
-	defer print(&msg{Message: "v.configPSK(): Returning", LogLevel: "debug"})
-
-	// If unencrypted PSK is set, use that instead of encrypted on.
-	// This is basically a work around to get it working in cn regions
-	// where there is no KMS.
-	print(&msg{Message: "v.configPSK(): Getting unencrypted PSK", LogLevel: "debug"})
-	unencryptedPsk := strings.Replace(os.Getenv("PSK"), " ", "", -1)
-	if len(unencryptedPsk) > 32 && len(unencryptedPsk) < 64 {
-		v.psk = unencryptedPsk
-
-		print(&msg{Message: "v.configPSK(): PSK set", LogLevel: "info"})
-		return nil
-	}
+func (c *connection) configPSK() error {
+	print(&msg{Message: "c.configPSK(): Entering", LogLevel: "debug"})
+	defer print(&msg{Message: "c.configPSK(): Returning", LogLevel: "debug"})
 
 	// Get the encrypted PSK.
-	print(&msg{Message: "v.configPSK(): Getting encrypted PSK", LogLevel: "debug"})
-	encryptedPsk := strings.Replace(os.Getenv("PSK_ENCRYPTED"), " ", "", -1)
-	if encryptedPsk == "" {
-		return fmt.Errorf("v.configPSK(): PSK_ENCRYPTED not set")
+	print(&msg{Message: "c.configPSK(): Checking encrypted PSK", LogLevel: "debug"})
+	if c.PskEncrypted == "" {
+		return fmt.Errorf("c.configPSK(): PskEncrypted not set")
 	}
 
 	// Get the KMS region.
-	print(&msg{Message: "v.configPSK(): Getting KMS region", LogLevel: "debug"})
-	region := strings.Replace(os.Getenv("KMS_REGION"), " ", "", -1)
+	print(&msg{Message: "c.configPSK(): Getting KMS region", LogLevel: "debug"})
+	region := removeSpaces(os.Getenv("KMS_REGION"))
 	if region == "" {
-		return fmt.Errorf("v.configPSK(): KMS_REGION not set")
+		return fmt.Errorf("c.configPSK(): KMS_REGION not set")
 	}
 
 	// Create the KSM decrypter.
-	print(&msg{Message: "v.configPSK(): Creating KMS decrypter", LogLevel: "debug"})
+	print(&msg{Message: "c.configPSK(): Creating KMS decrypter", LogLevel: "debug"})
 	d, err := kmsdecrypt.New(region)
 	if err != nil {
-		return fmt.Errorf("v.configPSK(): Couldn't create decrypter. Error %s", err.Error())
+		return fmt.Errorf("c.configPSK(): Couldn't create decrypter. Error %s", err.Error())
 	}
 
 	// Decrypt the PSK.
-	print(&msg{Message: "v.configPSK(): Decrypting PSK", LogLevel: "debug"})
-	psk, err := d.DecryptString(encryptedPsk)
+	print(&msg{Message: "c.configPSK(): Decrypting PSK", LogLevel: "debug"})
+	psk, err := d.DecryptString(c.PskEncrypted)
 	if err != nil {
-		return fmt.Errorf("v.configPSK(): Couldn't decrypt PSK. Error %s", err.Error())
+		return fmt.Errorf("c.configPSK(): Couldn't decrypt PSK. Error %s", err.Error())
 	}
 
 	// Check PSK length.
 	if len(psk) < 32 || len(psk) > 64 {
-		return fmt.Errorf("v.configPSK(): Decrypted PSK must be betwen 32 and 64 characters")
+		return fmt.Errorf("c.configPSK(): Decrypted PSK must be betwen 32 and 64 characters")
 	}
-	v.psk = psk
+	c.psk = psk
+	c.PskEncrypted = ""
 
-	print(&msg{Message: "v.configPSK(): PSK decrypted and set", LogLevel: "info"})
-	return nil
-}
-
-// configCharonLogLevel will get the log level for charon from
-// env var and set it to vpconnect. The value must be an integer
-// between 1 and 3 to be valid. It will not accept logging off (0)
-// or to high logging (above 3), since that will log PSK passwords
-// and other sensitive data.
-// Returns error.
-func (v *vpconnect) configCharonLogLevel() error {
-	print(&msg{Message: "v.configCharonLogLevel(): Entering", LogLevel: "debug"})
-	defer print(&msg{Message: "v.configCharonLogLevel(): Returning", LogLevel: "debug"})
-
-	// Replace any accidental spaces.
-	c := strings.Replace(os.Getenv("CHARON_LOG_LEVEL"), " ", "", -1)
-
-	switch {
-	case c == "":
-		v.charonLogLevel = "1"
-
-	default:
-		charon, err := strconv.Atoi(c)
-		if err != nil {
-			return fmt.Errorf("v.configCharonLogLevel(): CHARON_LOG_LEVEL set but couldn't be converted to integer. Valid values are between 1, 2 or 3. Current value %s", c)
-		}
-
-		// Check that charon logging is between 1-3.
-		// Thats so that we at least have logging but not
-		// so much logging that we send PSK secrets.
-		if charon < 1 || charon > 3 {
-			return fmt.Errorf("v.configCharonLogLevel(): CHARON_LOG_LEVEL set but is invalid. Valid values are between 1, 2 or 3. Current value %d", charon)
-		}
-
-		v.charonLogLevel = c
-	}
-
-	print(&msg{Message: fmt.Sprintf("v.configCharonLogLevel(): Charon Log Level set to %s", v.charonLogLevel), LogLevel: "info"})
-	return nil
-}
-
-// configImportedRules will get the RULES env var and base64 decode it and
-// YAML Unmarshal it to a slice of importedRules and set it to the v.importedRules.
-// These are then used for generating the desired rules/active rules.
-// Returns error.
-func (v *vpconnect) configImportedRules() error {
-	print(&msg{Message: "v.configImportedRules(): Entering", LogLevel: "debug"})
-	defer print(&msg{Message: "v.configImportedRules(): Returning", LogLevel: "debug"})
-
-	// Replace any accidental spaces.
-	base := strings.Replace(os.Getenv("RULES"), " ", "", -1)
-	if base == "" {
-		return fmt.Errorf("v.configImportedRules(): RULES not set")
-	}
-
-	// base64 decode the RULES vars.
-	raw, err := base64.StdEncoding.DecodeString(base)
-	if err != nil {
-		return fmt.Errorf("v.configImportedRules(): Couldn't base64 decode RULES. Error %s", err.Error())
-	}
-
-	// Unmarshal the rules.
-	rules := []importedRule{}
-	if err := yaml.Unmarshal(raw, &rules); err != nil {
-		return fmt.Errorf("v.configImportedRules(): Couldn't unmarshal RULES yaml to []importedRules. Error %s", err.Error())
-	}
-
-	// Set the imported rules.
-	v.importedRules = rules
-
-	print(&msg{Message: "v.configImportedRules(): Successfully decoded Rules", LogLevel: "info"})
+	print(&msg{Message: "c.configPSK(): PSK decrypted and set", LogLevel: "info"})
 	return nil
 }
 
 // configEncryption validates and sets the encryption algo.
 // Returns error.
-func (v *vpconnect) configEncryption() error {
-	print(&msg{Message: "v.configEncryption(): Entering", LogLevel: "debug"})
-	defer print(&msg{Message: "v.configEncryption(): Returning", LogLevel: "debug"})
+func (c *connection) configEncryption() error {
+	print(&msg{Message: "c.configEncryption(): Entering", LogLevel: "debug"})
+	defer print(&msg{Message: "c.configEncryption(): Returning", LogLevel: "debug"})
 
-	// Replace any accidental spaces.
-	enc := strings.Replace(os.Getenv("ENCRYPTION"), " ", "", -1)
-
-	if enc == "" {
-		enc = "aes256"
+	// Default to aes256 if encryption not set.
+	if c.Encryption == "" {
+		c.Encryption = "aes256"
 	}
 
 	// Check if the specified type exists in the allowedEncryption slice.
-	for _, e := range allowedEncryption {
-		if e == enc {
-			v.encryption = enc
-			return nil
-		}
+	if !stringExists(c.Encryption, allowedEncryption) {
+		return fmt.Errorf("c.configEncryption(): Encryption %s is not a valid. Valid values are %s", c.Encryption, allowedEncryption)
 	}
 
-	return fmt.Errorf("v.configEncryption(): ENCRYPTION %s is not a valid. Valid values are %s", enc, allowedEncryption)
+	return nil
 }
 
 // configIntegrity validates and sets the integrity algo.
 // Returns error.
-func (v *vpconnect) configIntegrity() error {
-	print(&msg{Message: "v.configIntegrity(): Entering", LogLevel: "debug"})
-	defer print(&msg{Message: "v.configIntegrity(): Returning", LogLevel: "debug"})
+func (c *connection) configIntegrity() error {
+	print(&msg{Message: "c.configIntegrity(): Entering", LogLevel: "debug"})
+	defer print(&msg{Message: "c.configIntegrity(): Returning", LogLevel: "debug"})
 
-	// Replace any accidental spaces.
-	integrity := strings.Replace(os.Getenv("INTEGRITY"), " ", "", -1)
-
-	if integrity == "" {
-		integrity = "sha256"
+	// Integrity is not set, default to sha256.
+	if c.Integrity == "" {
+		c.Integrity = "sha256"
 	}
 
-	// Check if the specified type exists in the allowedEncryption slice.
-	for _, i := range allowedIntegrity {
-		if i == integrity {
-			v.integrity = integrity
-			return nil
-		}
+	// Check if the specified type exists in the allowedIntegrity slice.
+	if !stringExists(c.Integrity, allowedIntegrity) {
+		return fmt.Errorf("c.configIntegrity(): Integrity %s is not a valid. Valid values are %s", c.Integrity, allowedIntegrity)
 	}
 
-	return fmt.Errorf("v.configIntegrity(): INTEGRITY %s is not a valid. Valid values are %s", integrity, allowedIntegrity)
+	return nil
 }
 
 // configDiffieHellman validates and sets the diffiehellman group.
 // Returns error.
-func (v *vpconnect) configDiffieHellman() error {
-	print(&msg{Message: "v.configDiffieHellman(): Entering", LogLevel: "debug"})
-	defer print(&msg{Message: "v.configDiffieHellman(): Returning", LogLevel: "debug"})
+func (c *connection) configDiffieHellman() error {
+	print(&msg{Message: "c.configDiffieHellman(): Entering", LogLevel: "debug"})
+	defer print(&msg{Message: "c.configDiffieHellman(): Returning", LogLevel: "debug"})
 
-	// Replace any accidental spaces.
-	dh := strings.Replace(os.Getenv("DIFFIE_HELLMAN"), " ", "", -1)
-
-	if dh == "" {
-		dh = "modp2048"
+	// Default to modp2048 if DiffieHellman is not set.
+	if c.DiffieHellman == "" {
+		c.DiffieHellman = "modp2048"
 	}
 
-	// Check if the specified type exists in the allowedEncryption slice.
-	for _, d := range allowedDiffieHellman {
-		if d == dh {
-			v.diffieHellman = dh
-			return nil
+	// Check if the specified type exists in the allowedDiffieHellman slice.
+	if !stringExists(c.DiffieHellman, allowedDiffieHellman) {
+		return fmt.Errorf("c.configDiffieHellman(): DiffieHellman %s is not a valid. Valid values are %s", c.DiffieHellman, allowedDiffieHellman)
+	}
+
+	return nil
+}
+
+// configLocal validates the connections Local configuration.
+// Returns error.
+func (c *connection) configLocal() error {
+	print(&msg{Message: "c.configLocal(): Entering", LogLevel: "debug"})
+	defer print(&msg{Message: "c.configLocal(): Returning", LogLevel: "debug"})
+
+	// Check that Local Subnets is not empty.
+	if len(c.Local.Subnets) == 0 {
+		return fmt.Errorf("c.configLocal: Connection %s doesn't contain any local subnets", c.Name)
+	}
+
+	// Loop over all local subnets. If any of the subnets are invalid
+	// return error.
+	for _, subnet := range c.Local.Subnets {
+		if !isValidCIDR(subnet) {
+			return fmt.Errorf("c.configLocal: Connection %s has an invalid local subnet %s", c.Name, subnet)
 		}
 	}
-
-	return fmt.Errorf("v.configDiffieHellman(): DIFFIE_HELLMAN %s is not a valid. Valid values are %s", dh, allowedDiffieHellman)
+	return nil
 }
 
 // configIkeLifeTime validates and sets the IKE Life Time.
-// Returns error.
-func (v *vpconnect) configIkeLifeTime() error {
-	print(&msg{Message: "v.configIkeLifeTime(): Entering", LogLevel: "debug"})
-	defer print(&msg{Message: "v.configIkeLifeTime(): Returning", LogLevel: "debug"})
+func (c *connection) configIkeLifeTime() {
+	print(&msg{Message: "c.configIkeLifeTime(): Entering", LogLevel: "debug"})
+	defer print(&msg{Message: "c.configIkeLifeTime(): Returning", LogLevel: "debug"})
 
-	// Replace any accidental spaces.
-	ike, err := strconv.Atoi(strings.Replace(os.Getenv("IKE_LIFETIME"), " ", "", -1))
-	if err != nil {
-		return fmt.Errorf("v.configIkeLifeTime(): IKE_LIFETIME %s couldn't be converted to integer", os.Getenv("IKE_LIFETIME"))
+	// Set default IKE lifetime if 0.
+	if c.IkeLifeTime == 0 {
+		c.IkeLifeTime = 10800
 	}
-
-	if ike == 0 {
-		ike = 10800
-	}
-
-	v.ikeLifeTime = ike
-	return nil
 }
 
 // configIpsecLifeTime validates and sets the Ipsec Life Time.
+func (c *connection) configIpsecLifeTime() {
+	print(&msg{Message: "c.configIpsecLifeTime(): Entering", LogLevel: "debug"})
+	defer print(&msg{Message: "c.configIpsecLifeTime(): Returning", LogLevel: "debug"})
+
+	// Set default IPSec lifetime if 0.
+	if c.IpsecLifeTime == 0 {
+		c.IpsecLifeTime = 3600
+	}
+}
+
+// configRemotes validates a connections remotes.
 // Returns error.
-func (v *vpconnect) configIpsecLifeTime() error {
-	print(&msg{Message: "v.configIpsecLifeTime(): Entering", LogLevel: "debug"})
-	defer print(&msg{Message: "v.configIpsecLifeTime(): Returning", LogLevel: "debug"})
+func (c *connection) configRemotes() error {
+	print(&msg{Message: "c.configRemotes(): Entering", LogLevel: "debug"})
+	defer print(&msg{Message: "c.configRemotes(): Returning", LogLevel: "debug"})
 
-	// Replace any accidental spaces.
-	ipsec, err := strconv.Atoi(strings.Replace(os.Getenv("IPSEC_LIFETIME"), " ", "", -1))
-	if err != nil {
-		return fmt.Errorf("v.configIpsecLifeTime(): IPSEC_LIFETIME %s couldn't be converted to integer", os.Getenv("IPSEC_LIFETIME"))
+	// Check that remotes is not empty.
+	if len(c.Remotes) == 0 {
+		return fmt.Errorf("c.configLocal: Connection %s doesn't contain any remotes", c.Name)
 	}
 
-	if ipsec == 0 {
-		ipsec = 3600
+	// Loop over all remotes and validate them. If anyone contains an error
+	// return error.
+	for _, remote := range c.Remotes {
+		// Validate remote name.
+		remoteNames := []string{}
+		if err := remote.configRemoteName(remoteNames); err != nil {
+			return err
+		}
+		// Validate remote IP.
+		if err := remote.configRemoteIp(); err != nil {
+			return err
+		}
+		// Validate remote ID.
+		remote.configRemoteId()
+		// Validate remote subnets.
+		if err := remote.configRemoteSubnets(); err != nil {
+			return err
+		}
 	}
-
-	v.ipsecLifeTime = ipsec
 	return nil
+}
+
+// configRemoteName validates a remotes name.
+func (r *remote) configRemoteName(names []string) error {
+	print(&msg{Message: "r.configRemoteName(): Entering", LogLevel: "debug"})
+	defer print(&msg{Message: "r.configRemoteName(): Returning", LogLevel: "debug"})
+
+	// Check that r.Name isn't empty.
+	if r.Name == "" {
+		return fmt.Errorf("r.configRemoteName(): Name not set in one or more remotes")
+	}
+
+	// Check if name is unique.
+	if stringExists(r.Name, names) {
+		return fmt.Errorf("r.configRemoteName(): Connection Name must be unique")
+	}
+
+	names = append(names, r.Name)
+	return nil
+}
+
+// configRemoteIp will validate a remotes IP.
+// Returns error.
+func (r *remote) configRemoteIp() error {
+	print(&msg{Message: "r.configRemoteIp(): Entering", LogLevel: "debug"})
+	defer print(&msg{Message: "r.configRemoteIp(): Returning", LogLevel: "debug"})
+
+	// Validate that IP is a valid IP.
+	if !isValidIP(r.Ip) {
+		return fmt.Errorf("r.configRemoteIp(): Remote %s contains an invalid IP %s", r.Name, r.Ip)
+	}
+	return nil
+}
+
+// configRemoteId will validate a remotes ID.
+func (r *remote) configRemoteId() {
+	print(&msg{Message: "r.configRemoteId(): Entering", LogLevel: "debug"})
+	defer print(&msg{Message: "r.configRemoteId(): Returning", LogLevel: "debug"})
+
+	// Validate that ID is set, otherwise set IP as the value of ID.
+	if r.Id == "" {
+		r.Id = r.Id
+	}
+}
+
+// configRemoteSubnets validates a remotes subnets.
+// Returns error.
+func (r *remote) configRemoteSubnets() error {
+	print(&msg{Message: "r.configRemoteSubnets(): Entering", LogLevel: "debug"})
+	defer print(&msg{Message: "r.configRemoteSubnets(): Returning", LogLevel: "debug"})
+
+	// Check that Remote Subnets is not empty.
+	if len(r.Subnets) == 0 {
+		return fmt.Errorf("c.configRemoteSubnets: Remote %s doesn't contain any subnets", r.Name)
+	}
+
+	// Loop over all remote subnets. If any of the subnets are invalid
+	// return error.
+	for _, subnet := range r.Subnets {
+		if !isValidCIDR(subnet) {
+			return fmt.Errorf("c.configRemoteSubnets: Remote %s has an invalid local subnet %s", r.Name, subnet)
+		}
+	}
+	return nil
+}
+
+// configCharonLogLevel will get set to 3 if debug is active.
+// Otherwise it will be set to 1.
+func (v *vpconnect) configCharonLogLevel() {
+	print(&msg{Message: "v.configCharonLogLevel(): Entering", LogLevel: "debug"})
+	defer print(&msg{Message: "v.configCharonLogLevel(): Returning", LogLevel: "debug"})
+
+	// Set charon log level based on debug.
+	switch debug {
+	case true:
+		v.charonLogLevel = 3
+
+	default:
+		v.charonLogLevel = 1
+	}
+
+	print(&msg{Message: fmt.Sprintf("v.configCharonLogLevel(): Charon Log Level set to %d", v.charonLogLevel), LogLevel: "info"})
 }

@@ -11,9 +11,9 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
-func gen(name string, env string) error {
-	cfgFile := fmt.Sprintf("../services/%s-%s/config.yaml", name, env)
-	cfTemplate := fmt.Sprintf("../services/%s-%s/cf.yaml", name, env)
+func gen(name string) error {
+	cfgFile := fmt.Sprintf("../services/%s/config.yaml", name)
+	cfTemplate := fmt.Sprintf("../services/%s/cf.yaml", name)
 	cfTemplateFriendly := strings.Replace(cfTemplate, "../", "", 1)
 
 	// Read the config.yaml file for the specified service.
@@ -23,7 +23,7 @@ func gen(name string, env string) error {
 	}
 
 	// Unmarshal the config file to the config struct.
-	c := &config{}
+	c := &file{}
 	if err := yaml.Unmarshal(b, c); err != nil {
 		return fmt.Errorf("Couldn't unmarshal %s. Error %s", cfgFile, err.Error())
 	}
@@ -34,17 +34,13 @@ func gen(name string, env string) error {
 
 	// Parse template.
 	templ := "../cf-template.yaml"
-	if strings.ToLower(c.Region) == "china" {
-		templ = "../cf-template-cn.yaml"
-	}
-
 	t, err := template.ParseFiles(templ)
 	if err != nil {
 		return fmt.Errorf("Couldn't open template file. Error %s", err.Error())
 	}
 
 	// Add automatic and manual security group settings.
-	// And set Rules to a base64 representation of the yaml value.
+	// And set config to a base64 representation of the yaml value.
 	// Also generate a string-representation of the SA subnets.
 	if err = c.generateAutomaticIngress(); err != nil {
 		return err
@@ -52,11 +48,9 @@ func gen(name string, env string) error {
 	if err = c.generateManualIngress(); err != nil {
 		return err
 	}
-	if err = c.generateRules(); err != nil {
+	if err = c.generateConfig(); err != nil {
 		return err
 	}
-	c.generateRemoteIps()
-	c.generateSubnets()
 
 	// Create the cf-template.yaml file.
 	f, err := os.Create(cfTemplate)
@@ -77,27 +71,31 @@ func gen(name string, env string) error {
 // for accepting isakmp and esp from the Primary and (if set) Secondary Remote IPs.
 // It will then marshal it to a bytes representation of the YAML array.
 // Returns error.
-func (c *config) generateAutomaticIngress() error {
-	a := []ingress{}
+func (c *file) generateAutomaticIngress() error {
+	if c.Config.NoIpsec {
+		return nil
+	}
 
-	// Add the Remote IPs to the slice.
-	for _, ip := range c.Vpn.RemoteIps {
-		a = append(a,
-			ingress{
-				Description: "Allow ipsec/isakmp",
-				IpProtocol:  "udp",
-				FromPort:    500,
-				ToPort:      500,
-				CidrIp:      fmt.Sprintf("%s/32", ip),
-			},
-			ingress{
-				Description: "Allow ipsec/esp",
-				IpProtocol:  "udp",
-				FromPort:    4500,
-				ToPort:      4500,
-				CidrIp:      fmt.Sprintf("%s/32", ip),
-			},
-		)
+	a := []ingress{}
+	for _, conn := range c.Config.Connections {
+		for _, remote := range conn.Remotes {
+			a = append(a,
+				ingress{
+					Description: "Allow ipsec/isakmp",
+					IpProtocol:  "udp",
+					FromPort:    500,
+					ToPort:      500,
+					CidrIp:      fmt.Sprintf("%s/32", remote.Ip),
+				},
+				ingress{
+					Description: "Allow ipsec/esp",
+					IpProtocol:  "udp",
+					FromPort:    4500,
+					ToPort:      4500,
+					CidrIp:      fmt.Sprintf("%s/32", remote.Ip),
+				},
+			)
+		}
 	}
 
 	// Marshal to to YAML
@@ -114,7 +112,7 @@ func (c *config) generateAutomaticIngress() error {
 // for any manual added security group ingress rules. It wil set the c.ManualIngressString
 // with the marshaled byte representation of the YAML array.
 // Returns error.
-func (c *config) generateManualIngress() error {
+func (c *file) generateManualIngress() error {
 	// Ingress slice has length 0, just return so that we will run replacement with an empty string.
 	// Thus not generating any manual rules at all.
 	if len(c.Ingress) == 0 {
@@ -130,43 +128,28 @@ func (c *config) generateManualIngress() error {
 	return nil
 }
 
-// generateRules will generate the necessary rules and base64 encode the yaml representation
-// and set it to c.Rules.
+// generateConfig will generate the config as base64 encoded yaml representation that can be
+// used as an env var for the docker image.
 // Returns error
-func (c *config) generateRules() error {
-	b, err := yaml.Marshal(c.Rules)
+func (c *file) generateConfig() error {
+	b, err := yaml.Marshal(c.Config)
 	if err != nil {
-		return fmt.Errorf("Couldn't marshal rules. Error %s", err.Error())
+		return fmt.Errorf("Couldn't marshal config. Error %s", err.Error())
 	}
 
-	c.RulesString = base64.StdEncoding.EncodeToString(b)
+	c.ConfigString = base64.StdEncoding.EncodeToString(b)
 	return nil
-}
-
-// generateRemoteIps will convert the slice of strings to a string representation of the slice.
-func (c *config) generateRemoteIps() {
-	c.RemoteIpsString = strings.Join(c.Vpn.RemoteIps, ",")
-}
-
-// generateSubnets will convert the slice of strings to a string representation of the slice.
-func (c *config) generateSubnets() {
-	c.LocalSubnetsString = strings.Join(c.Vpn.LocalSubnets, ",")
-	c.RemoteSubnetsString = strings.Join(c.Vpn.RemoteSubnets, ",")
 }
 
 // validateConfig runs some simple validation on c to make sure that at least the most
 // basic stuff is there and seems ok.
 // Returns error.
-func (c *config) validateConfig() error {
+func (c *file) validateConfig() error {
 	switch {
 	case c.FriendlyName == "":
 		return fmt.Errorf("FriendlyName is required and can't be empty")
 	case c.Name == "":
 		return fmt.Errorf("Name is required and can't be empty")
-	case c.Environment == "":
-		return fmt.Errorf("Environment is required and can't be empty")
-	case len(c.Rules) == 0:
-		return fmt.Errorf("You need at least 1 Rule")
 	case c.Network.VpcId == "":
 		return fmt.Errorf("Network.VpcID is required and can't be empty")
 	case c.Network.PublicSubnetId == "":
@@ -181,38 +164,28 @@ func (c *config) validateConfig() error {
 		return fmt.Errorf("Ecs.DockerImage is required and can't be empty")
 	case c.Ecs.SshKeyName == "":
 		return fmt.Errorf("Ecs.SshKeyName is required and can't be empty")
-	case c.Ecs.KmsKeyArn == "" && strings.ToLower(c.Region) != "china":
+	case !c.Config.NoIpsec && c.Ecs.KmsKeyArn == "":
 		return fmt.Errorf("Ecs.KmsKeyArn is required and can't be empty")
 	case c.Ecs.AlarmSnsArn == "":
 		return fmt.Errorf("Ecs.AlarmSnsArn is required and can't be empty")
-	case c.Ecs.AmiImageId == "" && strings.ToLower(c.Region) == "china":
-		return fmt.Errorf("Ecs.AmiImageId is required and can't be empty")
-	case c.Vpn.Type == "":
-		return fmt.Errorf("Vpn.Type is required and can't be empty")
-	case c.Vpn.IkeLifeTime == 0:
-		return fmt.Errorf("Vpn.IkeVersion is required and must be either 1 or 2")
-	case c.Vpn.PskEncrypted == "" && strings.ToLower(c.Region) != "china":
-		return fmt.Errorf("Vpn.PskEncrypted is required and can't be empty")
-	case c.Vpn.Psk == "" && strings.ToLower(c.Region) == "china":
-		return fmt.Errorf("Vpn.Psk is required and can't be empty")
-	case len(c.Vpn.LocalSubnets) == 0:
-		return fmt.Errorf("You need at least 1 Vpn.LocalSubnets")
-	case len(c.Vpn.RemoteSubnets) == 0:
-		return fmt.Errorf("You need at least 1 Vpn.RemoteSubnets")
-	case strings.Join(c.Vpn.RemoteIps, ",") == "":
-		return fmt.Errorf("Vpn.RemotePrimaryIP is required and can't be empty")
-	case c.Vpn.Encryption == "":
-		return fmt.Errorf("Vpn.Encryption is required and can't be empty")
-	case c.Vpn.Integrity == "":
-		return fmt.Errorf("Vpn.Integrity is required and can't be empty")
-	case c.Vpn.DiffieHellman == "":
-		return fmt.Errorf("Vpn.DiffieHellman is required and can't be empty")
-	case c.Vpn.IkeLifeTime == 0:
-		return fmt.Errorf("Vpn.IkeLifeTime is required and can't be empty/0")
-	case c.Vpn.IpsecLifeTime == 0:
-		return fmt.Errorf("Vpn.IpsecLifeTime is required and can't be empty/0")
-	case c.Vpn.CharonLogLevel == 0:
-		return fmt.Errorf("Vpn.CharonLogLevel is required and can't be empty/0")
+	case !c.Config.NoIpsec && len(c.Config.Connections) == 0:
+		return fmt.Errorf("You need at least 1 Connection")
+	case !c.Config.NoIpsec && c.Config.Connections[0].Name == "":
+		return fmt.Errorf("Config.Connections.Name is required and can't be empty")
+	case !c.Config.NoIpsec && c.Config.Connections[0].IkeLifeTime == 0:
+		return fmt.Errorf("Config.Connections.IkeVersion is required and must be either 1 or 2")
+	case !c.Config.NoIpsec && c.Config.Connections[0].PskEncrypted == "":
+		return fmt.Errorf("Config.Connections.PskEncrypted is required and can't be empty")
+	case !c.Config.NoIpsec && len(c.Config.Connections[0].Local.Subnets) == 0:
+		return fmt.Errorf("You need at least 1 Config.Connections.Local.Subnets")
+	case !c.Config.NoIpsec && len(c.Config.Connections[0].Remotes) == 0:
+		return fmt.Errorf("You need at least 1 Config.Connections.Remotes")
+	case !c.Config.NoIpsec && c.Config.Connections[0].Remotes[0].Name == "":
+		return fmt.Errorf("Config.Connections.Remotes.Name needs to be set")
+	case !c.Config.NoIpsec && len(c.Config.Connections[0].Remotes[0].Subnets) == 0:
+		return fmt.Errorf("You need at least 1 Config.Connections.Remotes.Subnets")
+	case !c.Config.NoIpsec && c.Config.Connections[0].Remotes[0].Ip == "":
+		return fmt.Errorf("Config.Connections.Remotes.Ip is required and can't be empty")
 	}
 
 	// All is good.

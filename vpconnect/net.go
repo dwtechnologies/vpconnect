@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"net"
+	"strings"
 )
 
 // getCIDR takes input and check if it's a valid CIDR, IP or
@@ -13,31 +14,31 @@ import (
 // - Tries to do a hostname lookup, if successfull returns with appended /32 annotation,
 //   otherwise returns error.
 // Returns []string and error.
-func (v *vpconnect) getCIDR(input string) ([]string, error) {
-	print(&msg{Message: "v.getCIDR(): Entering", LogLevel: "debug"})
-	defer print(&msg{Message: "v.getCIDR(): Returning", LogLevel: "debug"})
+func getCIDR(input string) ([]string, error) {
+	print(&msg{Message: "getCIDR(): Entering", LogLevel: "debug"})
+	defer print(&msg{Message: "getCIDR(): Returning", LogLevel: "debug"})
 
 	switch {
 	// Just return the input as a slice if
 	// it's a valid CIDR annotation.
-	case v.isValidCIDR(input) == true:
+	case isValidCIDR(input) == true:
 		return []string{input}, nil
 
 		// Return as a /32 CIDR annotation if it's a valid IP.
-	case v.isValidIP(input) == true:
+	case isValidIP(input) == true:
 		return []string{fmt.Sprintf("%s/32", input)}, nil
 	}
 
 	// Return the IP slices as /32 CIDR annotation if
 	// hostname resolve works.
-	return v.dnsLookup(input)
+	return dnsLookup(input)
 }
 
-// isValidCIDR returns true if cidr is a valid IP address.
+// isValidCIDR returns true if cidr is a valid CIDR.
 // Returns bool.
-func (*vpconnect) isValidCIDR(cidr string) bool {
-	print(&msg{Message: "v.isValidCIDR(): Entering", LogLevel: "debug"})
-	defer print(&msg{Message: "v.isValidCIDR(): Returning", LogLevel: "debug"})
+func isValidCIDR(cidr string) bool {
+	print(&msg{Message: "isValidCIDR(): Entering", LogLevel: "debug"})
+	defer print(&msg{Message: "isValidCIDR(): Returning", LogLevel: "debug"})
 
 	if _, _, err := net.ParseCIDR(cidr); err != nil {
 		return false
@@ -47,9 +48,9 @@ func (*vpconnect) isValidCIDR(cidr string) bool {
 
 // isValidIP returns true if ip is a valid IP address.
 // Returns bool.
-func (*vpconnect) isValidIP(ip string) bool {
-	print(&msg{Message: "v.isValidIP(): Entering", LogLevel: "debug"})
-	defer print(&msg{Message: "v.isValidIP(): Returning", LogLevel: "debug"})
+func isValidIP(ip string) bool {
+	print(&msg{Message: "isValidIP(): Entering", LogLevel: "debug"})
+	defer print(&msg{Message: "isValidIP(): Returning", LogLevel: "debug"})
 
 	if check := net.ParseIP(ip); check == nil {
 		return false
@@ -61,15 +62,15 @@ func (*vpconnect) isValidIP(ip string) bool {
 // ip addresses it's resolved to. Returns the IP in
 // CIDR /32 annotation slice of strings.
 // Returns []string and error.
-func (*vpconnect) dnsLookup(host string) ([]string, error) {
-	print(&msg{Message: "v.dnsLookup(): Entering", LogLevel: "debug"})
-	defer print(&msg{Message: "v.dnsLookup(): Returning", LogLevel: "debug"})
+func dnsLookup(host string) ([]string, error) {
+	print(&msg{Message: "dnsLookup(): Entering", LogLevel: "debug"})
+	defer print(&msg{Message: "dnsLookup(): Returning", LogLevel: "debug"})
 
 	ret := []string{}
 
 	ips, err := net.LookupIP(host)
 	if err != nil {
-		return []string{}, fmt.Errorf("v.dnsLookup(): Couldn't do hostname lookup on %s. Error %s", host, err.Error())
+		return []string{}, fmt.Errorf("dnsLookup(): Couldn't do hostname lookup on %s. Error %s", host, err.Error())
 	}
 
 	// Get all IPs and append them in CIDR /32 annotation to ret.
@@ -78,4 +79,14 @@ func (*vpconnect) dnsLookup(host string) ([]string, error) {
 	}
 
 	return ret, nil
+}
+
+// removeNetmask will remove any netmask annotation on ip.
+func removeNetmask(ip string) string {
+	print(&msg{Message: "removeNetmask(): Entering", LogLevel: "debug"})
+	defer print(&msg{Message: "removeNetmask(): Returning", LogLevel: "debug"})
+
+	slice := strings.Split(ip, "/")
+
+	return slice[0]
 }

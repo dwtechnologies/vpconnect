@@ -10,60 +10,78 @@ import (
 // It contains config needed to both generate the ipsec config files as well
 // as updating iptables with the correct rules.
 type vpconnect struct {
-	vpnType       string
-	ikeVersion    int
-	psk           string
-	encryption    string
-	integrity     string
-	diffieHellman string
-	ikeLifeTime   int
-	ipsecLifeTime int
+	elasticIp string
 
-	left  left
-	right right
+	Connections []*connection `yaml:"Connections"`
+	Rules       []*rule       `yaml:"Rules"`
 
-	importedRules []importedRule
-	desiredRules  []*rule
-	activeRules   []*rule
+	CheckInterval int `yaml:"CheckInterval"`
 
-	charonLogLevel string
+	// Don't start charon. Program can be used as PF.
+	NoIpsec bool `yaml:"NoIpsec"`
+
+	desiredRules []*parsedRule
+	activeRules  []*parsedRule
+
+	charonLogLevel int
 	check          *time.Ticker
 	stopping       chan bool
 }
 
-type left struct {
-	elasticIP string
-	subnets   []string
+type connection struct {
+	Name          string `yaml:"Name"`
+	Type          string `yaml:"Type"`
+	IkeVersion    int    `yaml:"IkeVersion`
+	PskEncrypted  string `yaml:"PskEncrypted"`
+	Encryption    string `yaml:"Encryption"`
+	Integrity     string `yaml:"Integrity"`
+	DiffieHellman string `yaml:"DiffieHellman"`
+	IkeLifeTime   int    `yaml:"IkeLifeTime"`
+	IpsecLifeTime int    `yaml:"IpsecLifeTime"`
+
+	psk string // Unencrypted PSK
+
+	Local   local    `yaml:"Local"`
+	Remotes []remote `yaml:"Remotes"`
 }
 
-type right struct {
-	remoteIPs []string
-	subnets   []string
+type local struct {
+	Subnets []string `yaml:"Subnets"`
 }
 
-// importedRule is based to unmarshal and handle the base64 encoded rules
-// gathered from the ENV var RULES. These rules will be parsed and transformed
-// into vpconnect.rules.
-type importedRule struct {
-	From      []string `yaml:"From"`
-	To        []string `yaml:"To"`
-	Ports     []int    `yaml:"Ports"`
-	Protocols []string `yaml:"Protocols"`
-	Masq      bool     `yaml:"Masq"`
+type remote struct {
+	Name    string   `yaml:"Name"`
+	Ip      string   `yaml:"Ip"`
+	Id      string   `yaml:"Id"`
+	Subnets []string `yaml:"Subnets"`
 }
 
-// rule contains the pure rule that can be used to create an iptables rule.
+// rule contains the raw rule before it's been processed to a format
+// that can be used by iptables.
 type rule struct {
-	to         string
-	from       string
-	port       int
-	protocol   string
-	masquerade bool
-	err        error
+	From        []string    `yaml:"From"`
+	To          []string    `yaml:"To"`
+	Ports       []int       `yaml:"Ports"`
+	PortForward map[int]int `yaml:"PortForward"`
+	Protocols   []string    `yaml:"Protocols"`
+	Masq        bool        `yaml:"Masq"`
+}
+
+// parsedRule contains the rule in a way that can be used by iptables.
+type parsedRule struct {
+	to          string
+	from        string
+	port        int
+	portforward int
+	protocol    string
+	masquerade  bool
+	err         error
 }
 
 // Allowed types. Currently we only support subnet-2-subnet VPN (subnet).
 var allowedVpnTypes = []string{"subnet", "virtual"}
+
+var allowedIkeVersions = []int{1, 2}
 
 // Allowed encryption.
 var allowedEncryption = []string{"aes", "aes128", "aes192", "aes256", "aes128ctr", "aes192ctr", "aes256ctr", "aes128ccm8", "aes128ccm64", "aes192ccm8", "aes192ccm64",
@@ -86,16 +104,8 @@ func new() (*vpconnect, error) {
 	// Init vpconnect.
 	print(&msg{Message: "new(): Init vpconnect", LogLevel: "debug"})
 
-	v := &vpconnect{
-		stopping: make(chan bool),
-	}
-
-	// Configure vpconnect.
-	if err := v.config(); err != nil {
-		return nil, err
-	}
-
-	return v, nil
+	// Config and return a vpconnect and error.
+	return config()
 }
 
 // wait will wait until we get a message on the v.stopping channel.
@@ -107,9 +117,11 @@ func (v *vpconnect) wait() {
 	<-v.stopping
 	v.check.Stop()
 
-	if err := v.stop(); err != nil {
-		print(&msg{Message: err.Error(), LogLevel: "error"})
-		exit(1)
+	if !v.NoIpsec {
+		if err := v.stop(); err != nil {
+			print(&msg{Message: err.Error(), LogLevel: "error"})
+			exit(1)
+		}
 	}
 
 	exit(0)

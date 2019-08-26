@@ -24,8 +24,8 @@ Resources:
   VpnSecurityGroupNetworkInterface:
     Type: "AWS::EC2::SecurityGroup"
     Properties:
-      GroupName: "vpconnect-ni-{{.Name}}-{{.Environment}}"
-      GroupDescription: "vpconnect-ni-{{.Name}}-{{.Environment}}"
+      GroupName: "vpconnect-ni-{{.Name}}"
+      GroupDescription: "vpconnect-ni-{{.Name}}"
       VpcId: "{{.Network.VpcId}}"
       SecurityGroupIngress:
         # Automatic Ingress rules
@@ -46,8 +46,8 @@ Resources:
   VpnSecurityGroupPrimary:
     Type: "AWS::EC2::SecurityGroup"
     Properties:
-      GroupName: "vpconnect-primary-{{.Name}}-{{.Environment}}"
-      GroupDescription: "vpconnect-primary-{{.Name}}-{{.Environment}}"
+      GroupName: "vpconnect-primary-{{.Name}}"
+      GroupDescription: "vpconnect-primary-{{.Name}}"
       VpcId: "{{.Network.VpcId}}"
       SecurityGroupEgress:
         - Description: "Allow all traffic"
@@ -64,7 +64,7 @@ Resources:
   VpnEcsCluster:
     Type: "AWS::ECS::Cluster"
     Properties:
-      ClusterName: "vpconnect-{{.Name}}-{{.Environment}}"
+      ClusterName: "vpconnect-{{.Name}}"
 
 
 #####################
@@ -73,7 +73,7 @@ Resources:
   VpnEcsAutoScalingGroup:
     Type: "AWS::AutoScaling::AutoScalingGroup"
     Properties:
-      AutoScalingGroupName: "vpconnect-{{.Name}}-{{.Environment}}"
+      AutoScalingGroupName: "vpconnect-{{.Name}}"
       HealthCheckType: "EC2"
       LaunchConfigurationName: !Ref "VpnLaunchConfiguration"
       MinSize: "1"
@@ -82,7 +82,7 @@ Resources:
         - "{{.Network.PrivateSubnetId}}"
       Tags:
         - Key: "Name"
-          Value: "vpconnect-{{.Name}}-{{.Environment}}"
+          Value: "vpconnect-{{.Name}}"
           PropagateAtLaunch: true
 
 
@@ -225,13 +225,13 @@ Resources:
 
           commands:
             01_install_ssm_agent:
-              command: "cd /var/tmp/ && curl -O https://s3.amazonaws.com/ec2-downloads-windows/SSMAgent/latest/linux_amd64/amazon-ssm-agent.rpm && rpm -U amazon-ssm-agent.rpm"
+              command: !Sub "cd /var/tmp/ && curl -O https://s3.${AWS::Region}.amazonaws.${AWS::URLSuffix}/amazon-ssm-${AWS::Region}/latest/linux_amd64/amazon-ssm-agent.rpm && rpm -U amazon-ssm-agent.rpm"
 
             02_install_cloudwatchagent:
-              command: "cd /var/tmp/ && curl -O https://s3.amazonaws.com/amazoncloudwatch-agent/amazon_linux/amd64/latest/amazon-cloudwatch-agent.rpm && rpm -U amazon-cloudwatch-agent.rpm"
+              command: !Sub "cd /var/tmp/ && curl -O https://s3.${AWS::Region}.amazonaws.${AWS::URLSuffix}/amazoncloudwatch-agent-${AWS::Region}/amazon_linux/amd64/latest/amazon-cloudwatch-agent.rpm && rpm -U amazon-cloudwatch-agent.rpm"
 
             03_start_cloudwatchagent:
-              command: "/opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -c ssm:vpconnect-{{.Name}}-{{.Environment}}-cwAgentConf -s"
+              command: "/opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -c ssm:vpconnect-{{.Name}}-cwAgentConf -s"
 
             04_detach_eni:
               command: !Sub "aws ec2 detach-network-interface --region ${AWS::Region} --attachment-id $(aws ec2 describe-network-interface-attribute --region ${AWS::Region} --network-interface-id ${VpnElasticNetworkInterface} --attribute attachment --query Attachment.AttachmentId --output text)"
@@ -285,21 +285,21 @@ Resources:
       Path: "/"
       Roles:
         - !Ref "VpnEc2IamRole"
-      InstanceProfileName: "vpconnect-{{.Name}}-{{.Environment}}"
+      InstanceProfileName: "vpconnect-{{.Name}}"
 
   VpnEc2IamRole:
     Type: "AWS::IAM::Role"
-    Properties: 
+    Properties:
+      RoleName: "vpconnect-{{.Name}}"
       ManagedPolicyArns:
-        - "arn:aws:iam::aws:policy/service-role/AmazonEC2RoleforSSM"
-      RoleName: "vpconnect-{{.Name}}-{{.Environment}}"
+        - "arn:${AWS::Partition}:iam::aws:policy/service-role/AmazonEC2RoleforSSM"
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
         Statement: 
           - Effect: "Allow"
             Principal: 
               Service: 
-                - "ec2.amazonaws.com"
+                - !Sub "ec2.amazonaws.${AWS::URLSuffix}"
             Action: 
               - "sts:AssumeRole"
 
@@ -346,7 +346,7 @@ Resources:
               - Effect: "Allow"
                 Action:
                   - "ssm:GetParameter"
-                Resource: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/vpconnect-{{.Name}}-{{.Environment}}-cwAgentConf"
+                Resource: !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/vpconnect-{{.Name}}-cwAgentConf"
 
         - PolicyName: "kms-decrypt"
           PolicyDocument:
@@ -379,7 +379,7 @@ Resources:
   VpnCpuAlarm:
     Type: "AWS::CloudWatch::Alarm"
     Properties:
-      AlarmDescription: "vpconnect-{{.Name}}-{{.Environment}} cpu alarm"
+      AlarmDescription: "vpconnect-{{.Name}} cpu alarm"
       AlarmActions:
         - "{{.Ecs.AlarmSnsArn}}"
       OKActions:
@@ -399,7 +399,7 @@ Resources:
   VpnMemoryAlarm:
     Type: "AWS::CloudWatch::Alarm"
     Properties:
-      AlarmDescription: "vpconnect-{{.Name}}-{{.Environment}} memory alarm"
+      AlarmDescription: "vpconnect-{{.Name}} memory alarm"
       AlarmActions:
         - "{{.Ecs.AlarmSnsArn}}"
       OKActions:
@@ -419,7 +419,7 @@ Resources:
   VpnSwapAlarm:
     Type: "AWS::CloudWatch::Alarm"
     Properties:
-      AlarmDescription: "vpconnect-{{.Name}}-{{.Environment}} swap alarm"
+      AlarmDescription: "vpconnect-{{.Name}} swap alarm"
       AlarmActions:
         - "{{.Ecs.AlarmSnsArn}}"
       OKActions:
@@ -439,7 +439,7 @@ Resources:
   VpnDiskAlarm:
     Type: "AWS::CloudWatch::Alarm"
     Properties:
-      AlarmDescription: "vpconnect-{{.Name}}-{{.Environment}} disk alarm"
+      AlarmDescription: "vpconnect-{{.Name}} disk alarm"
       AlarmActions:
         - "{{.Ecs.AlarmSnsArn}}"
       OKActions:
@@ -465,7 +465,7 @@ Resources:
   VpnStatusCheckAlarm:
     Type: "AWS::CloudWatch::Alarm"
     Properties:
-      AlarmDescription: "vpconnect-{{.Name}}-{{.Environment}} status check alarm"
+      AlarmDescription: "vpconnect-{{.Name}} status check alarm"
       AlarmActions:
         - "{{.Ecs.AlarmSnsArn}}"
       OKActions:
@@ -495,7 +495,7 @@ Resources:
     DependsOn:
       - "VpnElasticIp"
     Properties: 
-      Family: "vpconnect-{{.Name}}-{{.Environment}}"
+      Family: "vpconnect-{{.Name}}"
 
       NetworkMode: "host"
       Volumes:
@@ -507,7 +507,7 @@ Resources:
             SourcePath: "/var/log/vpconnect-logs"
 
       ContainerDefinitions:
-        - Name: "vpconnect-{{.Name}}-{{.Environment}}"
+        - Name: "vpconnect-{{.Name}}"
           Image: "{{.Ecs.DockerImage}}"
           Memory: "{{.Ecs.Memory}}"
           Privileged: true
@@ -524,39 +524,13 @@ Resources:
               Value: !Select [ 3, !Split [ ":", "{{.Ecs.KmsKeyArn}}" ] ]
             - Name: "DEBUG"
               Value: "{{.Debug}}"
-            - Name: "CHARON_LOG_LEVEL"
-              Value: "{{.Vpn.CharonLogLevel}}"
             - Name: "ELASTIC_IP"
               Value: !Ref "VpnElasticIp"
-            - Name: "VPN_TYPE"
-              Value: "{{.Vpn.Type}}"
-            - Name: "IKE_VERSION"
-              Value: "{{.Vpn.IkeVersion}}"
-            - Name: "PSK_ENCRYPTED"
-              Value: "{{.Vpn.PskEncrypted}}"
-            - Name: "CHECK_INTERVAL"
-              Value: "{{.Vpn.CheckInterval}}"
-            - Name: "SUBNETS_LOCAL"
-              Value: "{{.LocalSubnetsString}}"
-            - Name: "SUBNETS_REMOTE"
-              Value: "{{.RemoteSubnetsString}}"
-            - Name: "REMOTE_IPS"
-              Value: "{{.RemoteIpsString}}"
-            - Name: "ENCRYPTION"
-              Value: "{{.Vpn.Encryption}}"
-            - Name: "INTEGRITY"
-              Value: "{{.Vpn.Integrity}}"
-            - Name: "DIFFIE_HELLMAN"
-              Value: "{{.Vpn.DiffieHellman}}"
-            - Name: "IKE_LIFETIME"
-              Value: "{{.Vpn.IkeLifeTime}}"
-            - Name: "IPSEC_LIFETIME"
-              Value: "{{.Vpn.IpsecLifeTime}}"
 
             # This value should be base64 encoded yaml data that will
             # be parsed by the vpconnect program.
-            - Name: "RULES"
-              Value: "{{.RulesString}}"
+            - Name: "CONFIG"
+              Value: "{{.ConfigString}}"
 
           MountPoints:
             - SourceVolume: "modules"
@@ -577,7 +551,7 @@ Resources:
       Cluster: !Ref "VpnEcsCluster"
       DesiredCount: "1"
       LaunchType: "EC2"
-      ServiceName: "vpconnect-{{.Name}}-{{.Environment}}"
+      ServiceName: "vpconnect-{{.Name}}"
       TaskDefinition: !Ref "VpnEcsTaskDefinition"
       DeploymentConfiguration:
         MaximumPercent: 100
@@ -592,61 +566,61 @@ Resources:
   VpnLogGroupSecure:
     Type: "AWS::Logs::LogGroup"
     Properties: 
-      LogGroupName: "/vpconnect/{{.Name}}-{{.Environment}}/secure"
+      LogGroupName: "/vpconnect/{{.Name}}/secure"
       RetentionInDays: 90
 
   VpnLogGroupDmseg:
     Type: "AWS::Logs::LogGroup"
     Properties: 
-      LogGroupName: "/vpconnect/{{.Name}}-{{.Environment}}/dmesg"
+      LogGroupName: "/vpconnect/{{.Name}}/dmesg"
       RetentionInDays: 90
 
   VpnLogGroupMessages:
     Type: "AWS::Logs::LogGroup"
     Properties: 
-      LogGroupName: "/vpconnect/{{.Name}}-{{.Environment}}/messages"
+      LogGroupName: "/vpconnect/{{.Name}}/messages"
       RetentionInDays: 90
 
   VpnLogGroupDocker:
     Type: "AWS::Logs::LogGroup"
     Properties: 
-      LogGroupName: "/vpconnect/{{.Name}}-{{.Environment}}/docker"
+      LogGroupName: "/vpconnect/{{.Name}}/docker"
       RetentionInDays: 90
 
   VpnLogGroupEcsInit:
     Type: "AWS::Logs::LogGroup"
     Properties: 
-      LogGroupName: "/vpconnect/{{.Name}}-{{.Environment}}/ecs-init"
+      LogGroupName: "/vpconnect/{{.Name}}/ecs-init"
       RetentionInDays: 90
 
   VpnLogGroupEcsAgent:
     Type: "AWS::Logs::LogGroup"
     Properties: 
-      LogGroupName: "/vpconnect/{{.Name}}-{{.Environment}}/ecs-agent"
+      LogGroupName: "/vpconnect/{{.Name}}/ecs-agent"
       RetentionInDays: 90
 
   VpnLogGroupEcsAudit:
     Type: "AWS::Logs::LogGroup"
     Properties: 
-      LogGroupName: "/vpconnect/{{.Name}}-{{.Environment}}/ecs-audit"
+      LogGroupName: "/vpconnect/{{.Name}}/ecs-audit"
       RetentionInDays: 90
 
   VpnLogGroupIptables:
     Type: "AWS::Logs::LogGroup"
     Properties:
-      LogGroupName: "/vpconnect/{{.Name}}-{{.Environment}}/iptables"
+      LogGroupName: "/vpconnect/{{.Name}}/iptables"
       RetentionInDays: 90
 
   VpnLogGroupCharon:
     Type: "AWS::Logs::LogGroup"
     Properties: 
-      LogGroupName: "/vpconnect/{{.Name}}-{{.Environment}}/charon"
+      LogGroupName: "/vpconnect/{{.Name}}/charon"
       RetentionInDays: 90
 
   VpnLogGroupVpconnect:
     Type: "AWS::Logs::LogGroup"
     Properties: 
-      LogGroupName: "/vpconnect/{{.Name}}-{{.Environment}}/vpconnect"
+      LogGroupName: "/vpconnect/{{.Name}}/vpconnect"
       RetentionInDays: 90
 
 
@@ -667,7 +641,7 @@ Resources:
   VpnElasticNetworkInterface:
     Type: "AWS::EC2::NetworkInterface"
     Properties:
-      Description: "vpconnect-{{.Name}}-{{.Environment}}"
+      Description: "vpconnect-{{.Name}}"
       SourceDestCheck: "false"
       SubnetId: "{{.Network.PublicSubnetId}}"
       GroupSet:
@@ -681,9 +655,9 @@ Resources:
   VpnCloudWatchAgentConfig:
     Type: "AWS::SSM::Parameter"
     Properties:
-      Name: "vpconnect-{{.Name}}-{{.Environment}}-cwAgentConf"
+      Name: "vpconnect-{{.Name}}-cwAgentConf"
       Type: "String"
-      Description: "vpconnect-{{.Name}}-{{.Environment}} CloudWatch Agent Config"
+      Description: "vpconnect-{{.Name}} CloudWatch Agent Config"
       Value: '{"metrics":{"append_dimensions":{"AutoScalingGroupName":"${aws:AutoScalingGroupName}"},"metrics_collected":{"cpu":{"measurement":["cpu_usage_idle","cpu_usage_iowait","cpu_usage_user","cpu_usage_system"],"metrics_collection_interval":120,"resources":["*"],"totalcpu":false},"disk":{"measurement":["used_percent","inodes_free"],"metrics_collection_interval":120,"resources":["*"]},"diskio":{"measurement":["io_time","write_bytes","read_bytes","writes","reads"],"metrics_collection_interval":120,"resources":["*"]},"mem":{"measurement":["mem_used_percent"],"metrics_collection_interval":120},"netstat":{"measurement":["tcp_established","tcp_time_wait"],"metrics_collection_interval":120},"swap":{"measurement":["swap_used_percent"],"metrics_collection_interval":120}}}}'
 
 

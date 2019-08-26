@@ -43,3 +43,46 @@ func print(m *msg) {
 	out, _ := json.Marshal(m)
 	fmt.Println(string(out))
 }
+
+// printRule prints the specific message for rule based on msgType
+// and the content of rule.
+func printRule(t string, r *parsedRule) {
+	action := "Adding"
+	if t == "delete" {
+		action = "Deleting"
+	}
+
+	m := fmt.Sprintf("printRule(): %s rule for %s/%d from %s to %s", action, r.protocol, r.port, r.from, r.to)
+	switch {
+	// All protocols.
+	case r.masquerade && r.protocol == "all":
+		m = fmt.Sprintf("printRule(): %s rule for %s to %s with masquerading", action, r.from, r.to)
+
+	case r.protocol == "all":
+		m = fmt.Sprintf("printRule(): %s rule for %s to %s", action, r.from, r.to)
+
+	// All ports.
+	case r.masquerade && r.port == -1:
+		m = fmt.Sprintf("printRule(): %s rule for %s from %s to %s with masquerading", action, r.protocol, r.from, r.to)
+
+	case r.port == -1:
+		m = fmt.Sprintf("printRule(): %s rule for %s from %s to %s", action, r.protocol, r.from, r.to)
+
+	// ICMP messages.
+	case r.masquerade && r.protocol == "icmp":
+		m = fmt.Sprintf("printRule(): %s rule for %s from %s to %s with masquerading", action, r.protocol, r.from, r.to)
+
+	case r.protocol == "icmp":
+		m = fmt.Sprintf("printRule(): %s rule for %s from %s to %s", action, r.protocol, r.from, r.to)
+
+	// Portforward.
+	case r.masquerade && r.portforward != 0:
+		m = fmt.Sprintf("printRule(): %s rule for %s to %s/%s:%d with masquerading and portforwarding from %d", action, r.from, r.protocol, r.to, r.port, r.portforward)
+
+	// Masq
+	case r.masquerade:
+		m = fmt.Sprintf("printRule(): %s rule for %s to %s/%s:%d with masquerading", action, r.from, r.protocol, r.to, r.port)
+	}
+
+	print(&msg{Message: m, LogLevel: "info"})
+}
