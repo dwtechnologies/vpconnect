@@ -511,6 +511,13 @@ Config:
 
   CheckInterval: 300
 
+Ingress:
+  - CidrIp: "0.0.0.0/0" # Or scope it down to exact IP or base CIDR if provider is dynamic as in this case. The more exact you're the more secure it is. Even if iptables will deny traffic if not from the exact IPs.
+    Description: Allow test on 443 and 444
+    FromPort: 443
+    ToPort: 443
+    IpProtocol: tcp
+
 Debug: false
 ```
 
