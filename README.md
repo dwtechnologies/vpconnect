@@ -158,6 +158,12 @@ AWS CLI is used when deploying to AWS.
 SERVICE=<NAME> make new
 ```
 
+Creating a new service with tagged resources / CF Tags
+
+```bash
+SERVICE=<NAME> TAGS="MyTag1=Value1 MyTag2=Value2" make new
+```
+
 Where `<NAME>` is the name of the service you want to create. (example: `myservice` or `myservice-dev` etc).  
 
 `<NAME>` must start with a letter and only contain alphanumeric and hyphens characters.
