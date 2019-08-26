@@ -11,9 +11,9 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
-func gen(name string, env string) error {
-	cfgFile := fmt.Sprintf("../services/%s-%s/config.yaml", name, env)
-	cfTemplate := fmt.Sprintf("../services/%s-%s/cf.yaml", name, env)
+func gen(name string) error {
+	cfgFile := fmt.Sprintf("../services/%s/config.yaml", name)
+	cfTemplate := fmt.Sprintf("../services/%s/cf.yaml", name)
 	cfTemplateFriendly := strings.Replace(cfTemplate, "../", "", 1)
 
 	// Read the config.yaml file for the specified service.
@@ -34,10 +34,6 @@ func gen(name string, env string) error {
 
 	// Parse template.
 	templ := "../cf-template.yaml"
-	if strings.ToLower(c.Region) == "china" {
-		templ = "../cf-template-cn.yaml"
-	}
-
 	t, err := template.ParseFiles(templ)
 	if err != nil {
 		return fmt.Errorf("Couldn't open template file. Error %s", err.Error())
@@ -154,8 +150,6 @@ func (c *file) validateConfig() error {
 		return fmt.Errorf("FriendlyName is required and can't be empty")
 	case c.Name == "":
 		return fmt.Errorf("Name is required and can't be empty")
-	case c.Environment == "":
-		return fmt.Errorf("Environment is required and can't be empty")
 	case c.Network.VpcId == "":
 		return fmt.Errorf("Network.VpcID is required and can't be empty")
 	case c.Network.PublicSubnetId == "":
@@ -170,22 +164,18 @@ func (c *file) validateConfig() error {
 		return fmt.Errorf("Ecs.DockerImage is required and can't be empty")
 	case c.Ecs.SshKeyName == "":
 		return fmt.Errorf("Ecs.SshKeyName is required and can't be empty")
-	case c.Ecs.KmsKeyArn == "" && strings.ToLower(c.Region) != "china":
+	case c.Ecs.KmsKeyArn == "":
 		return fmt.Errorf("Ecs.KmsKeyArn is required and can't be empty")
 	case c.Ecs.AlarmSnsArn == "":
 		return fmt.Errorf("Ecs.AlarmSnsArn is required and can't be empty")
-	case c.Ecs.AmiImageId == "" && strings.ToLower(c.Region) == "china":
-		return fmt.Errorf("Ecs.AmiImageId is required and can't be empty")
 	case !c.Config.NoIpsec && len(c.Config.Connections) == 0:
 		return fmt.Errorf("You need at least 1 Connection")
 	case !c.Config.NoIpsec && c.Config.Connections[0].Name == "":
 		return fmt.Errorf("Config.Connections.Name is required and can't be empty")
 	case !c.Config.NoIpsec && c.Config.Connections[0].IkeLifeTime == 0:
 		return fmt.Errorf("Config.Connections.IkeVersion is required and must be either 1 or 2")
-	case !c.Config.NoIpsec && c.Config.Connections[0].PskEncrypted == "" && strings.ToLower(c.Region) != "china":
+	case !c.Config.NoIpsec && c.Config.Connections[0].PskEncrypted == "":
 		return fmt.Errorf("Config.Connections.PskEncrypted is required and can't be empty")
-	case !c.Config.NoIpsec && c.Config.Connections[0].Psk == "" && strings.ToLower(c.Region) == "china":
-		return fmt.Errorf("Config.Connections.Psk is required and can't be empty")
 	case !c.Config.NoIpsec && len(c.Config.Connections[0].Local.Subnets) == 0:
 		return fmt.Errorf("You need at least 1 Config.Connections.Local.Subnets")
 	case !c.Config.NoIpsec && len(c.Config.Connections[0].Remotes) == 0:

@@ -46,9 +46,8 @@ type ecs struct {
 	Memory       int    `yaml:"Memory"`
 	DockerImage  string `yaml:"DockerImage"`
 	SshKeyName   string `yaml:"SshKeyName"`
-	KmsKeyArn    string `yaml:"KmsKeyArn"` /* global */
+	KmsKeyArn    string `yaml:"KmsKeyArn"`
 	AlarmSnsArn  string `yaml:"AlarmSnsArn"`
-	AmiImageId   string `yaml:"AmiImageId"` /* china */
 }
 
 type connection struct {
@@ -56,7 +55,6 @@ type connection struct {
 	Type          string `yaml:"Type"`
 	IkeVersion    int    `yaml:"IkeVersion"`
 	PskEncrypted  string `yaml:"PskEncrypted"`
-	Psk           string `yaml:"Psk"`
 	Encryption    string `yaml:"Encryption"`
 	Integrity     string `yaml:"Integrity"`
 	DiffieHellman string `yaml:"DiffieHellman"`
@@ -105,13 +103,13 @@ func main() {
 	args := os.Args
 
 	switch {
-	case args[1] == "new" && len(args) == 5:
-		if err := new(args[2], args[3], args[4]); err != nil {
+	case args[1] == "new" && len(args) == 3:
+		if err := new(args[2]); err != nil {
 			exit(err)
 		}
 
-	case args[1] == "gen" && len(args) == 4:
-		if err := gen(args[2], args[3]); err != nil {
+	case args[1] == "gen" && len(args) == 3:
+		if err := gen(args[2]); err != nil {
 			exit(err)
 		}
 
@@ -130,11 +128,9 @@ func exit(err error) {
 // name is the executable name and should be retrieved in the calling
 // function with os.Args[0].
 func printUsageAndExit(name string) {
-	fmt.Printf("Usage: %s <CMD> <NAME> <ENV> [<REGION>]\n", name)
+	fmt.Printf("Usage: %s <CMD> <NAME>\n", name)
 	fmt.Printf("Where <CMD> can be either:\n")
 	fmt.Printf("  new  For creating a new vpconnect vpn service and creating config.yaml\n")
-	fmt.Printf("       When issuing new you need to specify <REGION>.\n")
-	fmt.Printf("       Region is either GLOBAL or CHINA.\n")
 	fmt.Printf("  gen  For generating the cf template from config.yaml\n\n")
 	os.Exit(1)
 }
