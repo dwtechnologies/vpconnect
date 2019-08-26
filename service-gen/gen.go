@@ -145,6 +145,11 @@ func (c *file) generateConfig() error {
 // basic stuff is there and seems ok.
 // Returns error.
 func (c *file) validateConfig() error {
+	// If IPSec is false. Set dummy KMS REGION.
+	if c.Config.NoIpsec {
+		c.Ecs.KmsKeyArn = "::DUMMY:::"
+	}
+
 	switch {
 	case c.FriendlyName == "":
 		return fmt.Errorf("FriendlyName is required and can't be empty")
