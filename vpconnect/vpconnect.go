@@ -33,12 +33,13 @@ type connection struct {
 	Type          string `yaml:"Type"`
 	IkeVersion    int    `yaml:"IkeVersion`
 	PskEncrypted  string `yaml:"PskEncrypted"`
-	Psk           string `yaml:"Psk"`
 	Encryption    string `yaml:"Encryption"`
 	Integrity     string `yaml:"Integrity"`
 	DiffieHellman string `yaml:"DiffieHellman"`
 	IkeLifeTime   int    `yaml:"IkeLifeTime"`
 	IpsecLifeTime int    `yaml:"IpsecLifeTime"`
+
+	psk string // Unencrypted PSK
 
 	Local   local    `yaml:"Local"`
 	Remotes []remote `yaml:"Remotes"`

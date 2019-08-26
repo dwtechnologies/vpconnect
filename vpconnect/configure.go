@@ -254,24 +254,6 @@ func (c *connection) configPSK() error {
 	print(&msg{Message: "c.configPSK(): Entering", LogLevel: "debug"})
 	defer print(&msg{Message: "c.configPSK(): Returning", LogLevel: "debug"})
 
-	// If unencrypted PSK is set, use that instead of encrypted on.
-	// This is basically a work around to get it working in cn regions
-	// where there is no KMS.
-	print(&msg{Message: "c.configPSK(): Checking unencrypted PSK", LogLevel: "debug"})
-	if len(c.Psk) > 32 && len(c.Psk) < 64 {
-		print(&msg{Message: "c.configPSK(): PSK set", LogLevel: "info"})
-		return nil
-	}
-
-	switch {
-	case len(c.Psk) > 32 && len(c.Psk) < 64:
-		print(&msg{Message: "c.configPSK(): PSK set", LogLevel: "info"})
-		return nil
-
-	case len(c.Psk) != 0:
-		return fmt.Errorf("c.configPSK(): PSK must be betwen 32 and 64 characters")
-	}
-
 	// Get the encrypted PSK.
 	print(&msg{Message: "c.configPSK(): Checking encrypted PSK", LogLevel: "debug"})
 	if c.PskEncrypted == "" {
@@ -303,7 +285,7 @@ func (c *connection) configPSK() error {
 	if len(psk) < 32 || len(psk) > 64 {
 		return fmt.Errorf("c.configPSK(): Decrypted PSK must be betwen 32 and 64 characters")
 	}
-	c.Psk = psk
+	c.psk = psk
 	c.PskEncrypted = ""
 
 	print(&msg{Message: "c.configPSK(): PSK decrypted and set", LogLevel: "info"})

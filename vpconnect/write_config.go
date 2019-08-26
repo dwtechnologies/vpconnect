@@ -135,7 +135,7 @@ func (c *connection) configSubnetToSubnet(eip string) (string, string) {
 		ipsec += fmt.Sprintf("\trightsubnet = %s\n", strings.Join(r.Subnets, ","))
 		ipsec += "\trightauth = psk\n\n"
 
-		secrets += fmt.Sprintf("%s %s : PSK \"%s\"\n", eip, r.Ip, c.Psk)
+		secrets += fmt.Sprintf("%s %s : PSK \"%s\"\n", eip, r.Ip, c.psk)
 	}
 
 	return ipsec, secrets
