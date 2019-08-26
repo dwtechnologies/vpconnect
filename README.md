@@ -334,59 +334,52 @@ You simple just add a route for the specific CIDR to the eni created by CF. This
 
 So in the case of failure the route table shouldn't have to be updated.
 
-## Example (step-by-step)
+## Example 1 - Connecting remote site to AWS with AWS VPC peering
 
-The following steps will explain how to generate a new VPConnect service.
-We will pretend to be connecting our datacenter to our warehouse.
+The following steps will explain how to set up the VPConnect service to connect
+a remote site to AWS Account 1. And then through a AWS VPC Peering connection to
+AWS Account 2.
 
-It will create two VPN tunnels, one primary and one secondary.
-The primary WAN ip will be 213.111.111.100 and the secondary will be
-213.222.222.100.
+Only traffic from remote site to `acc1-service1.example.com`, `acc1-service2.example.com` and `acc2-service.example.com` on `tcp/443` will be allowed. Due to the AWS VPC Peering connection to AWS Account 2 we will mask traffic going to `acc2-service.example.com`.
 
-The local (left) subnets are `10.10.10.0/24` and `10.20.20.0/24` and the remote (right) subnets are `192.168.100.0/24` and `192.168.200.0/24`.
+The services are behind internal load balancers, so their IPs can change at any time. This is why
+we refer to them by hostname instead of IPs.
 
-In iptables (RULES) we will limit so that the warehouse can access the IP corresponding to my.aws.service.com over tcp/443.  
-All other ports (and traffic in other direction) will be denied.
-
-If my.aws.service.com changes IP the service will automatically update the iptables rule.
+| Name | Value |
+|-|-|
+| Remote WAN 1 | 213.111.111.1 |
+| Remote WAN 2 | 213.111.111.2 |
+| Remote Local Subnet 1 | 192.168.100.0/24 |
+| Remote Local Subnet 2 | 192.168.101.0/24 |
+| AWS Account 1 Subnet | 10.100.0.0/24 |
+| AWS Account 1 VPC ID | vpc-12345678 |
+| AWS Account 1 Private Subnet | subnet-87654321 (only used for primary ec2 network interface) |
+| AWS Account 1 Public Subnet | subnet-12345678 (the network interface actually used) |
+| AWS Account 2 Subnet | 10.200.0.0/24 |
+| acc1-service1.example.com | 10.100.0.10, 10.100.0.11 |
+| acc1-service2.example.com | 10.100.0.20, 10.100.0.21, 10.100.0.22 |
+| acc2-service1.example.com | 10.200.0.10, 10.200.0.11, 10.200.0.12 |
 
 ### Create the base template
 
 ```bash
-make new SERVICE=test ENVIRONMENT=dev REGION=global
+SERVICE=myservice make new
 ```
+
+### Encrypt the password using KMS
+
+Encrypt the PSK you want to set using KMS. It will be referred to as `MYENCRYPTIONHASH` in the example below.
 
 ### Edit the config file
 
-Edit the config file under `services/test-dev/config.yaml` to fit your needs.  
+Edit the config file under `services/myservice/config.yaml` to fit your needs.  
 Check the parameters above for what must be set and not.
 
 See the following example config.
 
 ```yaml
-# Allow traffic from our warehouse, 192.168.100.0/24 and 192.168.200.0/24
-# to the IP that corresponds to my.aws.service.com (is in 10.10.10.0/24
-# or 10.20.20.0/24 in this example). Only traffic on port tcp/443 will
-# be allowed.
-# Masquerading will not be enabled.
-# All other incoming or outgoing traffic will be blocked.
-
-# As you will see in the ingress rules (the AWS SG rules) we allow all
-# traffic over all protocols from 192.168.100+200.0/24 and then limit
-# by iptables.
-
-# In a real world scenario you would probably want this as tight as
-# possible regarding sources, protocols and ports.
-
-# For example limiting tcp/443 to the whole subnet that an load balancer
-# with none static IP is in. And then add the DNS hostname of the load
-# balancer to the Rules list so that we can block all traffic except
-# to to the load balancer.
-
-FriendlyName: Test
-Name: test
-Environment: dev
-Region: global
+FriendlyName: MyService
+Name: myservice
 Network:
   VpcId: vpc-12345678
   PrivateSubnetId: subnet-87654321
@@ -402,7 +395,7 @@ Ecs:
 
 Config:
   Connections:
-    - Name: warehouse
+    - Name: awsacc1
       Type: subnet
       IkeVersion: 2
       PskEncrypted: MYENCRYPTIONHASH
@@ -413,47 +406,116 @@ Config:
       IpsecLifeTime: 3600
 
       Local:
-        Subnets: [ 10.10.10.0/24, 10.20.20.0/24 ]
+        Subnets: [ 10.100.0.0/24, 10.200.0.0/24 ]
 
       Remotes:
         - Name: primary
-          Ip: 213.111.111.100
-          Subnets: [ 192.168.100.0/24, 192.168.200.0/24 ]
+          Ip: 213.111.111.1
+          Subnets: [ 192.168.100.0/24, 192.168.101.0/24 ]
 
         - Name: secondary
-          Ip: 213.222.222.100
-          Subnets: [ 192.168.100.0/24, 192.168.200.0/24 ]
+          Ip: 213.111.111.2
+          Subnets: [ 192.168.100.0/24, 192.168.101.0/24 ]
 
   Rules:
-    - From: [ 192.168.100.0/24, 192.168.200.0/24 ]
-      To: [ my.aws.service.com ]
+    - From: [ 192.168.100.0/24, 192.168.101.0/24 ]
+      To: [ acc1-service1.example.com, acc1-service2.example.com ]
       Ports: [ 443 ]
       Protocols: [ tcp ]
       Masq: false
 
+    - From: [ 192.168.100.0/24, 192.168.101.0/24 ]
+      To: [ acc2-service1.example.com ]
+      Ports: [ 443 ]
+      Protocols: [ tcp ]
+      Masq: true
+
   CheckInterval: 300
 
 Debug: false
-
-Ingress:
-  - CidrIp: 192.168.100.0/24
-    Description: Allow warehouse series 1
-    FromPort: -1
-    ToPort: -1
-    IpProtocol: -1
-  - CidrIp: 192.168.200.0/24
-    Description: Allow warehouse series 1
-    FromPort: -1
-    ToPort: -1
-    IpProtocol: -1
 ```
 
 ### Deploy it
 
-Deploy it, please be sure that you are authed and have the correct AWS_PROFILE set.
+Deploy it, please be sure that you are logged in and have set the correct `AWS_DEFAULT_PROFILE` and `AWS_DEFAULT_REGION`.
 
 ```bash
-make deploy SERVICE=test ENVIRONMENT=dev
+SERVICE=myservice make deploy
 ```
 
-You can see how the generated template looks like by checking out `services/<NAME>-<ENV>/cf.yaml`.
+You can see how the generated template looks like by checking out `services/<NAME>/cf.yaml`.
+
+## Example 2 - Port Forwarding from hostname to hostname
+
+The following steps will explain how to set up the VPConnect service
+to allow port forwarding only between two specific hostname. One of them being a remote service
+that needs to access something inside your AWS account.
+
+For this we will also disable the IPSec engine, which allows us to have a much smaller config.
+
+In the example we we have gotten a list of 5 IPs that the vendor will be using to connect to our service. Since they might add, remove or change the IPs we need to solve this dynamically in a smart away.
+
+Since they don't provide any automatic way for us to do this, we will create an route53 entry for this.
+We will call it `external-provider1.example.com`. And to this entry we will add their 5 IPs.
+
+This way, when they change IP we can simple just update out Route53 entry and the VPConnect service will automatically update the rules accordingly.
+
+The service our external provider wants to reach is an internal load balancer that is `lb1.example.com`. Since it's a load balancer it's IPs can change and we will therefor reference it by hostname as well.
+
+The port the provider needs to access it `tcp/443`.
+
+Please note that you need to specify both `PortForward` option and `Masq` option for this to work as intended.
+
+### Create the base Port Forward template
+
+```bash
+SERVICE=myportforward make new
+```
+
+### Edit the Port Forward config file
+
+Edit the config file under `services/myportforward/config.yaml` to fit your needs.  
+Check the parameters above for what must be set and not.
+
+See the following example config.
+
+```yaml
+FriendlyName: MyPortForward
+Name: myportforward
+Network:
+  VpcId: vpc-12345678
+  PrivateSubnetId: subnet-87654321
+  PublicSubnetId: subnet-12345678
+
+Ecs:
+  InstanceType: t2.nano
+  Memory: 384
+  DockerImage: my.ecr.repo.com/vpconnect:my-image-tag
+  SshKeyName: my-key
+  AlarmSnsArn: arn:aws:sns:MyRegion:MyAccountId:MySNS
+
+Config:
+  NoIpsec: true
+  Rules:
+    - From: [ external-provider1.example.com ]
+      To: [ lb1.example.com ]
+      Ports: [ 443 ]
+      PortForward:
+        443: 443
+      Protocols: [ tcp ]
+      Masq: true
+
+  CheckInterval: 300
+
+Debug: false
+```
+
+### Deploy Port Forward
+
+Deploy it, please be sure that you are logged in and have set the correct `AWS_DEFAULT_PROFILE` and `AWS_DEFAULT_REGION`.
+
+```bash
+SERVICE=myportforward make deploy
+```
+
+You can see how the generated template looks like by checking out `services/<NAME>/cf.yaml`.
