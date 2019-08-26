@@ -89,7 +89,7 @@ func (v *vpconnect) addIptableRule(r *parsedRule) error {
 			list = append(list, []string{"-t", "nat", "-A", "POSTROUTING", "-s", r.from, "-d", r.to, "-p", r.protocol, "--dport", strconv.Itoa(r.port), "-o", "eth1", "-j", "MASQUERADE"})
 		}
 		if r.portforward != 0 {
-			list = append(list, []string{"-t", "nat", "-A", "PREROUTING", "-s", r.from, "-p", r.protocol, "--dport", strconv.Itoa(r.port), "-i", "eth1", "-j", "DNAT", "--to", fmt.Sprintf("%s:%d", removeNetmask(r.to), r.portforward)})
+			list = append(list, []string{"-t", "nat", "-A", "PREROUTING", "-s", r.from, "-p", r.protocol, "--dport", strconv.Itoa(r.portforward), "-i", "eth1", "-j", "DNAT", "--to", fmt.Sprintf("%s:%d", removeNetmask(r.to), r.port)})
 		}
 	}
 
@@ -127,7 +127,7 @@ func (v *vpconnect) deleteIptableRule(r *parsedRule) error {
 			list = append(list, []string{"-t", "nat", "-D", "POSTROUTING", "-s", r.from, "-d", r.to, "--dport", strconv.Itoa(r.port), "-p", r.protocol, "-o", "eth1", "-j", "MASQUERADE"})
 		}
 		if r.portforward != 0 {
-			list = append(list, []string{"-t", "nat", "-D", "PREROUTING", "-s", r.from, "-p", r.protocol, "--dport", strconv.Itoa(r.port), "-i", "eth1", "-j", "DNAT", "--to", fmt.Sprintf("%s:%d", removeNetmask(r.to), r.portforward)})
+			list = append(list, []string{"-t", "nat", "-D", "PREROUTING", "-s", r.from, "-p", r.protocol, "--dport", strconv.Itoa(r.portforward), "-i", "eth1", "-j", "DNAT", "--to", fmt.Sprintf("%s:%d", removeNetmask(r.to), r.port)})
 		}
 	}
 
