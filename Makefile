@@ -1,23 +1,25 @@
 .PHONY: new gen deploy-cf go-build docker-build docker-push clean
 
-PWD          = $(shell pwd)
-PROJECT      = vpconnect
-OWNER       ?= 
+PWD     = $(shell pwd)
+PROJECT = vpconnect
 
 # Check vars inside targets by calling "@:$(call check_var, VAR)"
 check_var = $(strip $(foreach 1,$1,$(call __check_var,$1,$(strip $(value 2)))))
 __check_var = $(if $(value $1),,$(error $1 variable not set))
 
+# Tags var will append tags with --tags if tags is not empty.
+# Should be claled with @$(call tags_var, TAGS)
+tags_var = $(strip $(foreach 1,$1,$(call __tags_var,$1,$(strip $(value 2)))))
+__tags_var = $(if $(value $1),$(eval TAGS=--tags $(TAGS)),)
+
 new:
 	@:$(call check_var, SERVICE)
-	@:$(call check_var, ENVIRONMENT)
-	@:$(call check_var, REGION)
 	@:$(call check_var, PWD)
 	@docker run \
 		-v $(PWD):/src/vpconnect \
 		-w /src/vpconnect/service-gen \
 		golang:1.12-alpine3.10 \
-		sh -c "apk --update add git && go run ./*.go new $(SERVICE) $(ENVIRONMENT) $(REGION)"
+		sh -c "apk --update add git && go run ./*.go new $(SERVICE)"
 
 
 deploy: gen deploy-cf
@@ -25,13 +27,12 @@ deploy: gen deploy-cf
 
 gen:
 	@:$(call check_var, SERVICE)
-	@:$(call check_var, ENVIRONMENT)
 	@:$(call check_var, PWD)
 	@docker run \
 		-v $(PWD):/src/vpconnect \
 		-w /src/vpconnect/service-gen \
 		golang:1.12-alpine3.10 \
-		sh -c "apk --update add git && go run ./*.go gen $(SERVICE) $(ENVIRONMENT)"
+		sh -c "apk --update add git && go run ./*.go gen $(SERVICE)"
 
 
 deploy-cf:
@@ -39,19 +40,16 @@ deploy-cf:
 	@:$(call check_var, ENVIRONMENT)
 	@:$(call check_var, PROJECT)
 	@:$(call check_var, OWNER)
+	@$(call tags_var, TAGS)
 	@aws cloudformation deploy \
-		--template-file ./services/$(SERVICE)-$(ENVIRONMENT)/cf.yaml \
-		--stack-name $(PROJECT)-$(SERVICE)-$(ENVIRONMENT) \
+		--template-file ./services/$(SERVICE)/cf.yaml \
+		--stack-name $(PROJECT)-$(SERVICE) \
 		--capabilities CAPABILITY_NAMED_IAM \
 		--no-fail-on-empty-changeset \
 		--parameter-overrides \
 			Name=$(SERVICE) \
-			Environment=$(ENVIRONMENT) \
-		--tags \
-			Environment=$(ENVIRONMENT) \
-			Project=$(PROJECT) \
-			Owner=$(OWNER)
-	@echo "Service $(PROJECT)-$(SERVICE)-$(ENVIRONMENT) successfully deployed"
+		$(TAGS)
+	@echo "Service $(PROJECT)-$(SERVICE) successfully deployed"
 
 
 docker: go-build docker-build docker-push
