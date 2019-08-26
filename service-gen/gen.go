@@ -164,7 +164,7 @@ func (c *file) validateConfig() error {
 		return fmt.Errorf("Ecs.DockerImage is required and can't be empty")
 	case c.Ecs.SshKeyName == "":
 		return fmt.Errorf("Ecs.SshKeyName is required and can't be empty")
-	case c.Ecs.KmsKeyArn == "":
+	case !c.Config.NoIpsec && c.Ecs.KmsKeyArn == "":
 		return fmt.Errorf("Ecs.KmsKeyArn is required and can't be empty")
 	case c.Ecs.AlarmSnsArn == "":
 		return fmt.Errorf("Ecs.AlarmSnsArn is required and can't be empty")
