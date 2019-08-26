@@ -36,8 +36,6 @@ Please refer to the examples below for example configurations.
 
 ## Note on instance types
 
-*not tested*
-
 Some instance types don't use the ethX naming schema for network interfaces and are probably not supported by the
 attach / detach interface commands in the CF metadata.
 
