@@ -22,6 +22,7 @@ type file struct {
 	AutoIngressString   string `yaml:"-"`
 	ManualIngressString string `yaml:"-"`
 	ConfigString        string `yaml:"-"`
+	KmsString           string `yaml:"-"`
 }
 
 // vpconnect contains the data that will be base64 encoded
@@ -96,6 +97,25 @@ type ingress struct {
 	SourceSecurityGroupId      string `yaml:"SourceSecurityGroupId,omitempty"`
 	SourceSecurityGroupOwnerId string `yaml:"SourceSecurityGroupOwnerId,omitempty"`
 }
+
+type policy struct {
+	PolicyName     string           `yaml:"PolicyName"`
+	PolicyDocument []policyDocument `yaml:"PolicyDocument"`
+}
+
+type policyDocument struct {
+	Effect   string   `yaml:"Effect"`
+	Action   []string `yaml:"Action"`
+	Resource string   `yaml:"Resource"`
+}
+
+// - PolicyName: "kms-decrypt"
+// PolicyDocument:
+//   Statement:
+// 	- Effect: "Allow"
+// 	  Action:
+// 		- "kms:Decrypt"
+// 	  Resource: "{{.Ecs.KmsKeyArn}}"
 
 func main() {
 	args := os.Args

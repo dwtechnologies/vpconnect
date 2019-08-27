@@ -292,7 +292,7 @@ Resources:
     Properties:
       RoleName: "vpconnect-{{.Name}}"
       ManagedPolicyArns:
-        - "arn:${AWS::Partition}:iam::aws:policy/service-role/AmazonEC2RoleforSSM"
+        - !Sub "arn:${AWS::Partition}:iam::aws:policy/service-role/AmazonEC2RoleforSSM"
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
         Statement: 
@@ -348,13 +348,7 @@ Resources:
                   - "ssm:GetParameter"
                 Resource: !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/vpconnect-{{.Name}}-cwAgentConf"
 
-        - PolicyName: "kms-decrypt"
-          PolicyDocument:
-            Statement:
-              - Effect: "Allow"
-                Action:
-                  - "kms:Decrypt"
-                Resource: "{{.Ecs.KmsKeyArn}}"
+        {{.KmsString}}
 
         - PolicyName: "eip"
           PolicyDocument:
