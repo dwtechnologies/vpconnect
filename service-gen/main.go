@@ -8,8 +8,6 @@ import (
 type file struct {
 	FriendlyName string `yaml:"FriendlyName"`
 	Name         string `yaml:"Name"`
-	Environment  string `yaml:"Environment"`
-	Region       string `yaml:"Region"` /* global or china */
 
 	Network network `yaml:"Network"`
 	Ecs     ecs     `yaml:"Ecs"`
