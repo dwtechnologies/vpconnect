@@ -180,8 +180,6 @@ The `config.yaml` will look like this:
 ```yaml
 FriendlyName: ""
 Name: testar-dev
-Environment: ""
-Region: ""
 Network:
   VpcId: ""
   PrivateSubnetId: ""
