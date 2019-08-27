@@ -145,9 +145,32 @@ func (c *file) generateConfig() error {
 // basic stuff is there and seems ok.
 // Returns error.
 func (c *file) validateConfig() error {
-	// If IPSec is false. Set dummy KMS REGION.
-	if c.Config.NoIpsec {
+	switch {
+	case c.Config.NoIpsec:
 		c.Ecs.KmsKeyArn = "::DUMMY:::"
+
+	default:
+		// Generate the policy document for KMS decrypt.
+		p := &policy{
+			PolicyName: "kms-decrypt",
+			PolicyDocument: []policyDocument{
+				policyDocument{
+					Effect: "Allow",
+					Action: []string{
+						"kms:Decrypt",
+					},
+					Resource: c.Ecs.KmsKeyArn,
+				},
+			},
+		}
+
+		// Marshal to to YAML
+		b, err := yaml.Marshal(p)
+		if err != nil {
+			return fmt.Errorf("Couldn't marshal the kms-decrypt policy. Error %s", err.Error())
+		}
+
+		c.KmsString = strings.Replace(string(b), "\n", "\n        ", -1)
 	}
 
 	switch {
