@@ -225,10 +225,10 @@ Resources:
 
           commands:
             01_install_ssm_agent:
-              command: !Sub "cd /var/tmp/ && curl -O https://s3.${AWS::Region}.amazonaws.${AWS::URLSuffix}/amazon-ssm-${AWS::Region}/latest/linux_amd64/amazon-ssm-agent.rpm && rpm -U amazon-ssm-agent.rpm"
+              command: !Sub "cd /var/tmp/ && curl -O https://s3.${AWS::Region}.${AWS::URLSuffix}/amazon-ssm-${AWS::Region}/latest/linux_amd64/amazon-ssm-agent.rpm && rpm -U amazon-ssm-agent.rpm"
 
             02_install_cloudwatchagent:
-              command: !Sub "cd /var/tmp/ && curl -O https://s3.${AWS::Region}.amazonaws.${AWS::URLSuffix}/amazoncloudwatch-agent-${AWS::Region}/amazon_linux/amd64/latest/amazon-cloudwatch-agent.rpm && rpm -U amazon-cloudwatch-agent.rpm"
+              command: !Sub "cd /var/tmp/ && curl -O https://s3.${AWS::Region}.${AWS::URLSuffix}/amazoncloudwatch-agent-${AWS::Region}/amazon_linux/amd64/latest/amazon-cloudwatch-agent.rpm && rpm -U amazon-cloudwatch-agent.rpm"
 
             03_start_cloudwatchagent:
               command: "/opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -c ssm:vpconnect-{{.Name}}-cwAgentConf -s"
@@ -299,7 +299,7 @@ Resources:
           - Effect: "Allow"
             Principal: 
               Service: 
-                - !Sub "ec2.amazonaws.${AWS::URLSuffix}"
+                - !Sub "ec2.${AWS::URLSuffix}"
             Action: 
               - "sts:AssumeRole"
 
